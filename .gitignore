@@ -29,7 +29,6 @@ packages/contracts-bedrock/deployments/anvil
 
 .secrets
 .env
-.env*
 !.env.example
 !.envrc.example
 *.log
@@ -46,3 +45,5 @@ __pycache__
 
 # Ignore echidna artifacts
 crytic-export
+
+.direnv

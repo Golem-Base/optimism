@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.15;
 
+import { console2 as console } from "forge-std/console2.sol";
+
 import { Script } from "forge-std/Script.sol";
 import { stdToml } from "forge-std/StdToml.sol";
 
@@ -288,8 +290,10 @@ contract DeploySuperchainOutput is BaseDeployIO {
 // since they are set to the initial proxy admin owner.
 contract DeploySuperchain is Script {
     // -------- Core Deployment Methods --------
-
-    function run(DeploySuperchainInput _dsi, DeploySuperchainOutput _dso) public {
+    address caller;
+    
+    function run(address _caller, DeploySuperchainInput _dsi, DeploySuperchainOutput _dso) public {
+        caller = _caller;
         // Notice that we do not do any explicit verification here that inputs are set. This is because
         // the verification happens elsewhere:
         //   - Getter methods on the input contract provide sanity checks that values are set, when applicable.
@@ -321,11 +325,12 @@ contract DeploySuperchain is Script {
         // We explicitly specify the deployer as `msg.sender` because for testing we deploy this script from a test
         // contract. If we provide no argument, the foundry default sender would be the broadcaster during test, but the
         // broadcaster needs to be the deployer since they are set to the initial proxy admin owner.
-        vm.broadcast(msg.sender);
+
+        vm.broadcast(caller);
         IProxyAdmin superchainProxyAdmin = IProxyAdmin(
             DeployUtils.create1({
                 _name: "ProxyAdmin",
-                _args: DeployUtils.encodeConstructor(abi.encodeCall(IProxyAdmin.__constructor__, (msg.sender)))
+                _args: DeployUtils.encodeConstructor(abi.encodeCall(IProxyAdmin.__constructor__, (caller)))
             })
         );
 
@@ -335,7 +340,7 @@ contract DeploySuperchain is Script {
 
     function deploySuperchainImplementationContracts(DeploySuperchainInput, DeploySuperchainOutput _dso) public {
         // Deploy implementation contracts.
-        vm.startBroadcast(msg.sender);
+        vm.startBroadcast(caller);
         ISuperchainConfig superchainConfigImpl = ISuperchainConfig(
             DeployUtils.create1({
                 _name: "SuperchainConfig",
@@ -364,7 +369,7 @@ contract DeploySuperchain is Script {
         IProxyAdmin superchainProxyAdmin = _dso.superchainProxyAdmin();
         ISuperchainConfig superchainConfigImpl = _dso.superchainConfigImpl();
 
-        vm.startBroadcast(msg.sender);
+        vm.startBroadcast(caller);
         ISuperchainConfig superchainConfigProxy = ISuperchainConfig(
             DeployUtils.create1({
                 _name: "Proxy",
@@ -380,6 +385,9 @@ contract DeploySuperchain is Script {
         );
         vm.stopBroadcast();
 
+        console.log("Deployed SuperchainConfigProxy", address(superchainConfigProxy));
+        console.log("SuperchainConfigProxy.guardian", superchainConfigProxy.guardian());
+
         vm.label(address(superchainConfigProxy), "SuperchainConfigProxy");
         _dso.set(_dso.superchainConfigProxy.selector, address(superchainConfigProxy));
     }
@@ -392,7 +400,7 @@ contract DeploySuperchain is Script {
         IProxyAdmin superchainProxyAdmin = _dso.superchainProxyAdmin();
         IProtocolVersions protocolVersionsImpl = _dso.protocolVersionsImpl();
 
-        vm.startBroadcast(msg.sender);
+        vm.startBroadcast(caller);
         IProtocolVersions protocolVersionsProxy = IProtocolVersions(
             DeployUtils.create1({
                 _name: "Proxy",
@@ -421,7 +429,7 @@ contract DeploySuperchain is Script {
         IProxyAdmin superchainProxyAdmin = _dso.superchainProxyAdmin();
         DeployUtils.assertValidContractAddress(address(superchainProxyAdmin));
 
-        vm.broadcast(msg.sender);
+        vm.broadcast(caller);
         superchainProxyAdmin.transferOwnership(superchainProxyAdminOwner);
     }
 
@@ -439,7 +447,7 @@ contract DeploySuperchain is Script {
 
     // This returns the addresses of the IO contracts for this script.
     function getIOContracts() public view returns (DeploySuperchainInput dsi_, DeploySuperchainOutput dso_) {
-        dsi_ = DeploySuperchainInput(DeployUtils.toIOAddress(msg.sender, "optimism.DeploySuperchainInput"));
-        dso_ = DeploySuperchainOutput(DeployUtils.toIOAddress(msg.sender, "optimism.DeploySuperchainOutput"));
+        dsi_ = DeploySuperchainInput(DeployUtils.toIOAddress(caller, "optimism.DeploySuperchainInput"));
+        dso_ = DeploySuperchainOutput(DeployUtils.toIOAddress(caller, "optimism.DeploySuperchainOutput"));
     }
 }

@@ -279,43 +279,43 @@ contract Deploy is Deployer {
 
         deployImplementations({ _isInterop: cfg.useInterop() });
 
-        // Deploy Current OPChain Contracts
-        deployOpChain();
+        // // Deploy Current OPChain Contracts
+        // deployOpChain();
 
-        // Apply modifications for non-standard configurations not supported by the OPCM deployment
-        if (cfg.useFaultProofs()) {
-            vm.startPrank(ISuperchainConfig(mustGetAddress("SuperchainConfigProxy")).guardian());
-            IOptimismPortal2(mustGetAddress("OptimismPortalProxy")).setRespectedGameType(
-                GameType.wrap(uint32(cfg.respectedGameType()))
-            );
-            vm.stopPrank();
-        } else {
-            // The L2OutputOracle is not deployed by the OPCM, we deploy the proxy and initialize it here.
-            deployERC1967Proxy("L2OutputOracleProxy");
-            initializeL2OutputOracle();
+        // // Apply modifications for non-standard configurations not supported by the OPCM deployment
+        // if (cfg.useFaultProofs()) {
+        //     vm.startPrank(ISuperchainConfig(mustGetAddress("SuperchainConfigProxy")).guardian());
+        //     IOptimismPortal2(mustGetAddress("OptimismPortalProxy")).setRespectedGameType(
+        //         GameType.wrap(uint32(cfg.respectedGameType()))
+        //     );
+        //     vm.stopPrank();
+        // } else {
+        //     // The L2OutputOracle is not deployed by the OPCM, we deploy the proxy and initialize it here.
+        //     deployERC1967Proxy("L2OutputOracleProxy");
+        //     initializeL2OutputOracle();
 
-            // The OptimismPortalProxy contract is used both with and without Fault Proofs enabled, and is deployed by
-            // deployOPChain. If Fault Proofs are disabled, then we need to reinitialize the OptimismPortalProxy
-            // as the legacy OptimismPortal.
-            resetInitializedProxy("OptimismPortal");
-            initializeOptimismPortal();
-        }
+        //     // The OptimismPortalProxy contract is used both with and without Fault Proofs enabled, and is deployed by
+        //     // deployOPChain. If Fault Proofs are disabled, then we need to reinitialize the OptimismPortalProxy
+        //     // as the legacy OptimismPortal.
+        //     resetInitializedProxy("OptimismPortal");
+        //     initializeOptimismPortal();
+        // }
 
-        if (cfg.useCustomGasToken()) {
-            // Reset the systemconfig then reinitialize it with the custom gas token
-            resetInitializedProxy("SystemConfig");
-            initializeSystemConfig();
-        }
+        // if (cfg.useCustomGasToken()) {
+        //     // Reset the systemconfig then reinitialize it with the custom gas token
+        //     resetInitializedProxy("SystemConfig");
+        //     initializeSystemConfig();
+        // }
 
-        if (cfg.useAltDA()) {
-            bytes32 typeHash = keccak256(bytes(cfg.daCommitmentType()));
-            bytes32 keccakHash = keccak256(bytes("KeccakCommitment"));
-            if (typeHash == keccakHash) {
-                setupOpAltDA();
-            }
-        }
+        // if (cfg.useAltDA()) {
+        //     bytes32 typeHash = keccak256(bytes(cfg.daCommitmentType()));
+        //     bytes32 keccakHash = keccak256(bytes("KeccakCommitment"));
+        //     if (typeHash == keccakHash) {
+        //         setupOpAltDA();
+        //     }
+        // }
 
-        transferProxyAdminOwnership();
+        // transferProxyAdminOwnership();
         console.log("set up op chain!");
     }
 
@@ -329,6 +329,7 @@ contract Deploy is Deployer {
     ///         2. The ProtocolVersions contract
     function deploySuperchain() public {
         console.log("Setting up Superchain");
+        console.log("deployer: ", msg.sender);
         DeploySuperchain ds = new DeploySuperchain();
         (DeploySuperchainInput dsi, DeploySuperchainOutput dso) = ds.etchIOContracts();
 
@@ -342,7 +343,8 @@ contract Deploy is Deployer {
         dsi.set(dsi.recommendedProtocolVersion.selector, ProtocolVersion.wrap(cfg.recommendedProtocolVersion()));
 
         // Run the deployment script.
-        ds.run(dsi, dso);
+        ds.run(msg.sender, dsi, dso);
+
         save("SuperchainProxyAdmin", address(dso.superchainProxyAdmin()));
         save("SuperchainConfigProxy", address(dso.superchainConfigProxy()));
         save("SuperchainConfig", address(dso.superchainConfigImpl()));
@@ -371,6 +373,8 @@ contract Deploy is Deployer {
         DeployImplementations di = new DeployImplementations();
         (DeployImplementationsInput dii, DeployImplementationsOutput dio) = di.etchIOContracts();
 
+        dii.set(dii.salt.selector, _implSalt());
+        
         dii.set(dii.withdrawalDelaySeconds.selector, cfg.faultGameWithdrawalDelay());
         dii.set(dii.minProposalSizeBytes.selector, cfg.preimageOracleMinProposalSize());
         dii.set(dii.challengePeriodSeconds.selector, cfg.preimageOracleChallengePeriod());
@@ -389,7 +393,7 @@ contract Deploy is Deployer {
         if (_isInterop) {
             di = DeployImplementations(new DeployImplementationsInterop());
         }
-        di.run(dii, dio);
+        di.run(msg.sender, dii, dio);
 
         // Temporary patch for legacy system
         if (!cfg.useFaultProofs()) {

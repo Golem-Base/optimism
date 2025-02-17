@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.15;
 
+import { console2 as console } from "forge-std/console2.sol";
+
 import { Script } from "forge-std/Script.sol";
 
 import { LibString } from "@solady/utils/LibString.sol";
@@ -457,7 +459,11 @@ contract DeployImplementationsOutput is BaseDeployIO {
 contract DeployImplementations is Script {
     // -------- Core Deployment Methods --------
 
-    function run(DeployImplementationsInput _dii, DeployImplementationsOutput _dio) public {
+    address caller;
+
+    function run(address _caller, DeployImplementationsInput _dii, DeployImplementationsOutput _dio) public {
+        caller = _caller;
+
         // Deploy the implementations.
         deploySystemConfigImpl(_dii, _dio);
         deployL1CrossDomainMessengerImpl(_dii, _dio);
@@ -555,11 +561,11 @@ contract DeployImplementations is Script {
     {
         address opcmProxyOwner = _dii.opcmProxyOwner();
 
-        vm.broadcast(msg.sender);
+        vm.broadcast(caller);
         IProxy proxy = IProxy(
             DeployUtils.create1({
                 _name: "Proxy",
-                _args: DeployUtils.encodeConstructor(abi.encodeCall(IProxy.__constructor__, (msg.sender)))
+                _args: DeployUtils.encodeConstructor(abi.encodeCall(IProxy.__constructor__, (caller)))
             })
         );
 
@@ -569,7 +575,7 @@ contract DeployImplementations is Script {
         OPContractsManager.InitializerInputs memory initializerInputs =
             OPContractsManager.InitializerInputs(_blueprints, _setters, _release, true);
 
-        vm.startBroadcast(msg.sender);
+        vm.startBroadcast(caller);
         proxy.upgradeToAndCall(address(opcmImpl), abi.encodeCall(opcmImpl.initialize, (initializerInputs)));
 
         proxy.changeAdmin(address(opcmProxyOwner)); // transfer ownership of Proxy contract to the ProxyAdmin contract
@@ -590,19 +596,9 @@ contract DeployImplementations is Script {
         // First we deploy the blueprints for the singletons deployed by OPCM.
         // forgefmt: disable-start
         bytes32 salt = _dii.salt();
-        OPContractsManager.Blueprints memory blueprints;
 
-        vm.startBroadcast(msg.sender);
-        blueprints.addressManager = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("AddressManager")), salt);
-        blueprints.proxy = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("Proxy")), salt);
-        blueprints.proxyAdmin = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("ProxyAdmin")), salt);
-        blueprints.l1ChugSplashProxy = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("L1ChugSplashProxy")), salt);
-        blueprints.resolvedDelegateProxy = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("ResolvedDelegateProxy")), salt);
-        blueprints.anchorStateRegistry = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("AnchorStateRegistry")), salt);
-        (blueprints.permissionedDisputeGame1, blueprints.permissionedDisputeGame2)  = deployBigBytecode(vm.getCode("PermissionedDisputeGame"), salt);
-        vm.stopBroadcast();
-        // forgefmt: disable-end
-
+        OPContractsManager.Blueprints memory blueprints = deployBlueprints(salt);
+    
         OPContractsManager.ImplementationSetter[] memory setters = new OPContractsManager.ImplementationSetter[](9);
         setters[0] = OPContractsManager.ImplementationSetter({
             name: "L1ERC721Bridge",
@@ -647,6 +643,31 @@ contract DeployImplementations is Script {
         _dio.set(_dio.opcmProxy.selector, address(opcmProxy));
     }
 
+    function deployBlueprints(bytes32 salt) public returns (OPContractsManager.Blueprints memory){
+        vm.startBroadcast(caller);
+        address addressManager = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("AddressManager")), salt);
+        address proxy = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("Proxy")), salt);
+        address proxyAdmin = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("ProxyAdmin")), salt);
+        address l1ChugSplashProxy = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("L1ChugSplashProxy")), salt);
+        address resolvedDelegateProxy = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("ResolvedDelegateProxy")), salt);
+        address anchorStateRegistry = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("AnchorStateRegistry")), salt);
+        (address permissionedDisputeGame1, address permissionedDisputeGame2)  = deployBigBytecode(vm.getCode("PermissionedDisputeGame"), salt);
+        vm.stopBroadcast();
+        // forgefmt: disable-end
+
+        return OPContractsManager.Blueprints({
+            addressManager: addressManager,
+            proxy: proxy,
+            proxyAdmin: proxyAdmin,
+            l1ChugSplashProxy: l1ChugSplashProxy,
+            resolvedDelegateProxy: resolvedDelegateProxy,
+            anchorStateRegistry: anchorStateRegistry,
+            permissionedDisputeGame1: permissionedDisputeGame1,            
+            permissionedDisputeGame2: permissionedDisputeGame2
+        });
+
+    }
+    
     // --- Core Contracts ---
 
     function deploySystemConfigImpl(DeployImplementationsInput _dii, DeployImplementationsOutput _dio) public virtual {
@@ -661,7 +682,7 @@ contract DeployImplementations is Script {
             impl = ISystemConfig(existingImplementation);
         } else if (isDevelopRelease(release)) {
             // Deploy a new implementation for development builds.
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = ISystemConfig(
                 DeployUtils.create1({
                     _name: "SystemConfig",
@@ -692,7 +713,7 @@ contract DeployImplementations is Script {
         if (existingImplementation != address(0)) {
             impl = IL1CrossDomainMessenger(existingImplementation);
         } else if (isDevelopRelease(release)) {
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = IL1CrossDomainMessenger(
                 DeployUtils.create1({
                     _name: "L1CrossDomainMessenger",
@@ -723,7 +744,7 @@ contract DeployImplementations is Script {
         if (existingImplementation != address(0)) {
             impl = IL1ERC721Bridge(existingImplementation);
         } else if (isDevelopRelease(release)) {
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = IL1ERC721Bridge(
                 DeployUtils.create1({
                     _name: "L1ERC721Bridge",
@@ -754,7 +775,7 @@ contract DeployImplementations is Script {
         if (existingImplementation != address(0)) {
             impl = IL1StandardBridge(payable(existingImplementation));
         } else if (isDevelopRelease(release)) {
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = IL1StandardBridge(
                 DeployUtils.create1({
                     _name: "L1StandardBridge",
@@ -785,7 +806,7 @@ contract DeployImplementations is Script {
         if (existingImplementation != address(0)) {
             impl = IOptimismMintableERC20Factory(existingImplementation);
         } else if (isDevelopRelease(release)) {
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = IOptimismMintableERC20Factory(
                 DeployUtils.create1({
                     _name: "OptimismMintableERC20Factory",
@@ -810,7 +831,7 @@ contract DeployImplementations is Script {
         ISuperchainConfig superchainConfigProxy = _dii.superchainConfigProxy();
         IProtocolVersions protocolVersionsProxy = _dii.protocolVersionsProxy();
 
-        vm.broadcast(msg.sender);
+        vm.broadcast(caller);
         // TODO: Eventually we will want to select the correct implementation based on the release.
         OPContractsManager impl = new OPContractsManager(superchainConfigProxy, protocolVersionsProxy);
 
@@ -873,7 +894,7 @@ contract DeployImplementations is Script {
         } else if (isDevelopRelease(release)) {
             uint256 proofMaturityDelaySeconds = _dii.proofMaturityDelaySeconds();
             uint256 disputeGameFinalityDelaySeconds = _dii.disputeGameFinalityDelaySeconds();
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = IOptimismPortal2(
                 DeployUtils.create1({
                     _name: "OptimismPortal2",
@@ -903,7 +924,7 @@ contract DeployImplementations is Script {
             impl = IDelayedWETH(payable(existingImplementation));
         } else if (isDevelopRelease(release)) {
             uint256 withdrawalDelaySeconds = _dii.withdrawalDelaySeconds();
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = IDelayedWETH(
                 DeployUtils.create1({
                     _name: "DelayedWETH",
@@ -938,7 +959,7 @@ contract DeployImplementations is Script {
         } else if (isDevelopRelease(release)) {
             uint256 minProposalSizeBytes = _dii.minProposalSizeBytes();
             uint256 challengePeriodSeconds = _dii.challengePeriodSeconds();
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             singleton = IPreimageOracle(
                 DeployUtils.create1({
                     _name: "PreimageOracle",
@@ -967,7 +988,7 @@ contract DeployImplementations is Script {
         } else if (isDevelopRelease(release)) {
             uint256 mipsVersion = _dii.mipsVersion();
             IPreimageOracle preimageOracle = IPreimageOracle(address(_dio.preimageOracleSingleton()));
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             singleton = IMIPS(
                 DeployUtils.create1({
                     _name: mipsVersion == 1 ? "MIPS" : "MIPS2",
@@ -998,7 +1019,7 @@ contract DeployImplementations is Script {
         if (existingImplementation != address(0)) {
             impl = IDisputeGameFactory(payable(existingImplementation));
         } else if (isDevelopRelease(release)) {
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = IDisputeGameFactory(
                 DeployUtils.create1({
                     _name: "DisputeGameFactory",
@@ -1019,11 +1040,13 @@ contract DeployImplementations is Script {
         (dii_, dio_) = getIOContracts();
         vm.etch(address(dii_), type(DeployImplementationsInput).runtimeCode);
         vm.etch(address(dio_), type(DeployImplementationsOutput).runtimeCode);
+        vm.allowCheatcodes(address(dii_));
+        vm.allowCheatcodes(address(dio_));
     }
 
     function getIOContracts() public view returns (DeployImplementationsInput dii_, DeployImplementationsOutput dio_) {
-        dii_ = DeployImplementationsInput(DeployUtils.toIOAddress(msg.sender, "optimism.DeployImplementationsInput"));
-        dio_ = DeployImplementationsOutput(DeployUtils.toIOAddress(msg.sender, "optimism.DeployImplementationsOutput"));
+        dii_ = DeployImplementationsInput(DeployUtils.toIOAddress(caller, "optimism.DeployImplementationsInput"));
+        dio_ = DeployImplementationsOutput(DeployUtils.toIOAddress(caller, "optimism.DeployImplementationsOutput"));
     }
 
     function deployBytecode(bytes memory _bytecode, bytes32 _salt) public returns (address newContract_) {
@@ -1129,11 +1152,11 @@ contract DeployImplementationsInterop is DeployImplementations {
     {
         address opcmProxyOwner = _dii.opcmProxyOwner();
 
-        vm.broadcast(msg.sender);
+        vm.broadcast(caller);
         IProxy proxy = IProxy(
             DeployUtils.create1({
                 _name: "Proxy",
-                _args: DeployUtils.encodeConstructor(abi.encodeCall(IProxy.__constructor__, (msg.sender)))
+                _args: DeployUtils.encodeConstructor(abi.encodeCall(IProxy.__constructor__, (caller)))
             })
         );
 
@@ -1143,7 +1166,7 @@ contract DeployImplementationsInterop is DeployImplementations {
         OPContractsManager.InitializerInputs memory initializerInputs =
             OPContractsManager.InitializerInputs(_blueprints, _setters, _release, true);
 
-        vm.startBroadcast(msg.sender);
+        vm.startBroadcast(caller);
         proxy.upgradeToAndCall(address(opcmImpl), abi.encodeCall(opcmImpl.initialize, (initializerInputs)));
 
         proxy.changeAdmin(opcmProxyOwner); // transfer ownership of Proxy contract to the ProxyAdmin contract
@@ -1170,7 +1193,7 @@ contract DeployImplementationsInterop is DeployImplementations {
         } else if (isDevelopRelease(release)) {
             uint256 proofMaturityDelaySeconds = _dii.proofMaturityDelaySeconds();
             uint256 disputeGameFinalityDelaySeconds = _dii.disputeGameFinalityDelaySeconds();
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = IOptimismPortalInterop(
                 DeployUtils.create1({
                     _name: "OptimismPortalInterop",
@@ -1207,7 +1230,7 @@ contract DeployImplementationsInterop is DeployImplementations {
         if (existingImplementation != address(0)) {
             impl = ISystemConfigInterop(existingImplementation);
         } else if (isDevelopRelease(release)) {
-            vm.broadcast(msg.sender);
+            vm.broadcast(caller);
             impl = ISystemConfigInterop(
                 DeployUtils.create1({
                     _name: "SystemConfigInterop",
@@ -1232,7 +1255,7 @@ contract DeployImplementationsInterop is DeployImplementations {
         ISuperchainConfig superchainConfigProxy = _dii.superchainConfigProxy();
         IProtocolVersions protocolVersionsProxy = _dii.protocolVersionsProxy();
 
-        vm.broadcast(msg.sender);
+        vm.broadcast(caller);
         // TODO: Eventually we will want to select the correct implementation based on the release.
         OPContractsManager impl = new OPContractsManagerInterop(superchainConfigProxy, protocolVersionsProxy);
 
