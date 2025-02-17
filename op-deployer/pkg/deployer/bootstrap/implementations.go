@@ -8,8 +8,6 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/standard"
-
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/artifacts"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/broadcaster"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/opcm"
@@ -179,10 +177,7 @@ func Implementations(ctx context.Context, cfg ImplementationsConfig) (opcm.Deplo
 		return dio, fmt.Errorf("failed to create script host: %w", err)
 	}
 
-	superProxyAdmin, err := standard.SuperchainProxyAdminAddrFor(chainID.Uint64())
-	if err != nil {
-		return dio, fmt.Errorf("failed to get superchain proxy admin address: %w", err)
-	}
+	superProxyAdmin := common.HexToAddress("0x39cbaaabd9039b075843edb9192abee6de6dcf21")
 
 	if dio, err = opcm.DeployImplementations(
 		l1Host,
