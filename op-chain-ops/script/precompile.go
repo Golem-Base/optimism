@@ -573,6 +573,9 @@ func (p *Precompile[E]) Run(input []byte) ([]byte, error) {
 	sig := [4]byte(input[:4])
 	params := input[4:]
 	fn, ok := p.abiMethods[sig]
+	for k, v := range p.abiMethods {
+		fmt.Printf("4byte: %x  ABI: %s  Go: %s\n", k, v.abiSignature, v.goName)
+	}
 	if !ok {
 		return encodeRevert(fmt.Errorf("unrecognized 4 byte signature: %x", sig))
 	}
