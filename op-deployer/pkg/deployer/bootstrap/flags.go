@@ -19,6 +19,7 @@ const (
 	MIPSVersionFlagName                     = "mips-version"
 	ProxyOwnerFlagName                      = "proxy-owner"
 	SuperchainProxyAdminOwnerFlagName       = "superchain-proxy-admin-owner"
+	GBSuperchainProxyAdminFlagName          = "gb-superchain-proxy-admin"
 	ProtocolVersionsOwnerFlagName           = "protocol-versions-owner"
 	GuardianFlagName                        = "guardian"
 	PausedFlagName                          = "paused"
@@ -84,6 +85,12 @@ var (
 		Name:    SuperchainProxyAdminOwnerFlagName,
 		Usage:   "Owner address for the superchain proxy admin",
 		EnvVars: deployer.PrefixEnvVar("SUPERCHAIN_PROXY_ADMIN_OWNER"),
+		Value:   common.Address{}.Hex(),
+	}
+	SuperchainProxyAdminFlag = &cli.StringFlag{
+		Name:    GBSuperchainProxyAdminFlagName,
+		Usage:   "GB: Address for the superchain proxy admin",
+		EnvVars: deployer.PrefixEnvVar("GB_SUPERCHAIN_PROXY_ADMIN"),
 		Value:   common.Address{}.Hex(),
 	}
 	ProtocolVersionsOwnerFlag = &cli.StringFlag{
@@ -156,6 +163,7 @@ var ImplementationsFlags = []cli.Flag{
 	ProtocolVersionsProxyFlag,
 	UpgradeControllerFlag,
 	UseInteropFlag,
+	SuperchainProxyAdminFlag,
 }
 
 var ProxyFlags = []cli.Flag{

@@ -41,6 +41,7 @@ type ImplementationsConfig struct {
 	ProtocolVersionsProxy           common.Address     `cli:"protocol-versions-proxy"`
 	UpgradeController               common.Address     `cli:"upgrade-controller"`
 	UseInterop                      bool               `cli:"use-interop"`
+	GBSuperchainProxyAdmin          common.Address     `cli:"gb-superchain-proxy-admin"`
 
 	Logger log.Logger
 
@@ -96,6 +97,9 @@ func (c *ImplementationsConfig) Check() error {
 	}
 	if c.UpgradeController == (common.Address{}) {
 		return errors.New("upgrade controller must be specified")
+	}
+	if c.GBSuperchainProxyAdmin == (common.Address{}) {
+		return errors.New("super proxy admin must be specified")
 	}
 	return nil
 }
@@ -177,8 +181,6 @@ func Implementations(ctx context.Context, cfg ImplementationsConfig) (opcm.Deplo
 		return dio, fmt.Errorf("failed to create script host: %w", err)
 	}
 
-	superProxyAdmin := common.HexToAddress("0x39cbaaabd9039b075843edb9192abee6de6dcf21")
-
 	if dio, err = opcm.DeployImplementations(
 		l1Host,
 		opcm.DeployImplementationsInput{
@@ -191,7 +193,7 @@ func Implementations(ctx context.Context, cfg ImplementationsConfig) (opcm.Deplo
 			L1ContractsRelease:              cfg.L1ContractsRelease,
 			SuperchainConfigProxy:           cfg.SuperchainConfigProxy,
 			ProtocolVersionsProxy:           cfg.ProtocolVersionsProxy,
-			SuperchainProxyAdmin:            superProxyAdmin,
+			SuperchainProxyAdmin:            cfg.GBSuperchainProxyAdmin,
 			UpgradeController:               cfg.UpgradeController,
 			UseInterop:                      cfg.UseInterop,
 		},
