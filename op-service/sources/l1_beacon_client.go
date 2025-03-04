@@ -140,7 +140,7 @@ func (cl *BeaconHTTPClient) BeaconBlobSideCars(ctx context.Context, fetchAllSide
 	}
 
 	if len(indices) > 0 {
-		return eth.APIGetBlobSidecarsResponse{}, fmt.Errorf("#returned blobs(%d) != #requested blobs(%d)", len(hashes)-len(indices), len(hashes))
+		return eth.APIGetBlobSidecarsResponse{}, fmt.Errorf("%s #returned blobs(%d) != #requested blobs(%d)", cl.cl.Endpoint(), len(hashes)-len(indices), len(hashes))
 	}
 	return resp, nil
 }

@@ -185,6 +185,7 @@ func TestBeaconClientFallback(t *testing.T) {
 
 func TestBeaconHTTPClient(t *testing.T) {
 	c := client_mocks.NewHTTP(t)
+	endpoint := c.Endpoint()
 	b := NewBeaconHTTPClient(c)
 
 	ctx := context.Background()
@@ -211,7 +212,7 @@ func TestBeaconHTTPClient(t *testing.T) {
 	// BeaconBlobSideCars should return error when client.HTTP returns a 200 with empty list
 	_, err := b.BeaconBlobSideCars(ctx, false, slot, hashes)
 	require.Error(t, err)
-	require.Equal(t, err.Error(), fmt.Sprintf("#returned blobs(%d) != #requested blobs(%d)", 0, len(hashes)))
+	require.Equal(t, err.Error(), fmt.Sprintf("%s #returned blobs(%d) != #requested blobs(%d)", endpoint, 0, len(hashes)))
 }
 
 func TestClientPoolSingle(t *testing.T) {

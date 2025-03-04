@@ -16,6 +16,10 @@ type HTTP struct {
 	mock.Mock
 }
 
+func (h *HTTP) Endpoint() string {
+	return "mock endpoint"
+}
+
 type HTTP_Expecter struct {
 	mock *mock.Mock
 }

@@ -19,6 +19,7 @@ var _ HTTP = (*BasicHTTPClient)(nil)
 
 type HTTP interface {
 	Get(ctx context.Context, path string, query url.Values, headers http.Header) (*http.Response, error)
+	Endpoint() string
 }
 
 type BasicHTTPClient struct {
@@ -27,6 +28,10 @@ type BasicHTTPClient struct {
 
 	log    log.Logger
 	client *http.Client
+}
+
+func (cl *BasicHTTPClient) Endpoint() string {
+	return cl.endpoint
 }
 
 func NewBasicHTTPClient(endpoint string, log log.Logger, opts ...BasicHTTPClientOption) *BasicHTTPClient {
