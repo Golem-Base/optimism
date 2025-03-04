@@ -213,7 +213,7 @@ func TestBeaconHTTPClient(t *testing.T) {
 	// BeaconBlobSideCars should return error when client.HTTP returns a 200 with empty list
 	_, err := b.BeaconBlobSideCars(ctx, false, slot, hashes)
 	require.Error(t, err)
-	require.Equal(t, err.Error(), fmt.Sprintf("%s #returned blobs(%d) != #requested blobs(%d)", endpoint, 0, len(hashes)))
+	require.Equal(t, err.Error(), fmt.Sprintf("http://localhost:1234/eth/v1/beacon/blob_sidecars/2?indices=3&indices=9&indices=11 #returned blobs(%d) != #requested blobs(%d)", 0, len(hashes)))
 }
 
 func TestClientPoolSingle(t *testing.T) {
