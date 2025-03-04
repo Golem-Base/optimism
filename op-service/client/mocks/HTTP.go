@@ -16,6 +16,14 @@ type HTTP struct {
 	mock.Mock
 }
 
+type HTTP_Expecter struct {
+	mock *mock.Mock
+}
+
+func (_m *HTTP) EXPECT() *HTTP_Expecter {
+	return &HTTP_Expecter{mock: &_m.Mock}
+}
+
 // Endpoint provides a mock function with no fields
 func (_m *HTTP) Endpoint() string {
 	ret := _m.Called()
@@ -32,6 +40,33 @@ func (_m *HTTP) Endpoint() string {
 	}
 
 	return r0
+}
+
+// HTTP_Endpoint_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Endpoint'
+type HTTP_Endpoint_Call struct {
+	*mock.Call
+}
+
+// Endpoint is a helper method to define mock.On call
+func (_e *HTTP_Expecter) Endpoint() *HTTP_Endpoint_Call {
+	return &HTTP_Endpoint_Call{Call: _e.mock.On("Endpoint")}
+}
+
+func (_c *HTTP_Endpoint_Call) Run(run func()) *HTTP_Endpoint_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *HTTP_Endpoint_Call) Return(_a0 string) *HTTP_Endpoint_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *HTTP_Endpoint_Call) RunAndReturn(run func() string) *HTTP_Endpoint_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // Get provides a mock function with given fields: ctx, path, query, headers
@@ -62,6 +97,37 @@ func (_m *HTTP) Get(ctx context.Context, path string, query url.Values, headers 
 	}
 
 	return r0, r1
+}
+
+// HTTP_Get_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Get'
+type HTTP_Get_Call struct {
+	*mock.Call
+}
+
+// Get is a helper method to define mock.On call
+//   - ctx context.Context
+//   - path string
+//   - query url.Values
+//   - headers http.Header
+func (_e *HTTP_Expecter) Get(ctx interface{}, path interface{}, query interface{}, headers interface{}) *HTTP_Get_Call {
+	return &HTTP_Get_Call{Call: _e.mock.On("Get", ctx, path, query, headers)}
+}
+
+func (_c *HTTP_Get_Call) Run(run func(ctx context.Context, path string, query url.Values, headers http.Header)) *HTTP_Get_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(url.Values), args[3].(http.Header))
+	})
+	return _c
+}
+
+func (_c *HTTP_Get_Call) Return(_a0 *http.Response, _a1 error) *HTTP_Get_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *HTTP_Get_Call) RunAndReturn(run func(context.Context, string, url.Values, http.Header) (*http.Response, error)) *HTTP_Get_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // NewHTTP creates a new instance of HTTP. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
