@@ -185,7 +185,8 @@ func TestBeaconClientFallback(t *testing.T) {
 
 func TestBeaconHTTPClient(t *testing.T) {
 	c := client_mocks.NewHTTP(t)
-	endpoint := c.Endpoint()
+	endpoint := "http://localhost:1234"
+	c.EXPECT().Endpoint().Return(endpoint)
 	b := NewBeaconHTTPClient(c)
 
 	ctx := context.Background()
