@@ -66,35 +66,37 @@ func NewBeaconHTTPClient(cl client.HTTP) *BeaconHTTPClient {
 	return &BeaconHTTPClient{cl}
 }
 
-func (cl *BeaconHTTPClient) apiReq(ctx context.Context, dest any, reqPath string, reqQuery url.Values) error {
+// apiReq makes a request to the Beacon API and decodes the response into `dest`. It returns the raw RequestURI and an error.
+func (cl *BeaconHTTPClient) apiReq(ctx context.Context, dest any, reqPath string, reqQuery url.Values) (string, error) {
 	headers := http.Header{}
 	headers.Add("Accept", "application/json")
 	resp, err := cl.cl.Get(ctx, reqPath, reqQuery, headers)
 	if err != nil {
-		return fmt.Errorf("http Get failed: %w", err)
+		return "", fmt.Errorf("http Get failed: %w", err)
 	}
+	requestURI := resp.Request.RequestURI
 	if resp.StatusCode == http.StatusNotFound {
 		errMsg, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return fmt.Errorf("failed request with status %d: %s: %w", resp.StatusCode, string(errMsg), ethereum.NotFound)
+		return requestURI, fmt.Errorf("failed request with status %d: %s: %w", resp.StatusCode, string(errMsg), ethereum.NotFound)
 	} else if resp.StatusCode != http.StatusOK {
 		errMsg, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return fmt.Errorf("failed request with status %d: %s", resp.StatusCode, string(errMsg))
+		return requestURI, fmt.Errorf("failed request with status %d: %s", resp.StatusCode, string(errMsg))
 	}
 	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
 		_ = resp.Body.Close()
-		return err
+		return requestURI, err
 	}
 	if err := resp.Body.Close(); err != nil {
-		return fmt.Errorf("failed to close response body: %w", err)
+		return requestURI, fmt.Errorf("failed to close response body: %w", err)
 	}
-	return nil
+	return requestURI, nil
 }
 
 func (cl *BeaconHTTPClient) NodeVersion(ctx context.Context) (string, error) {
 	var resp eth.APIVersionResponse
-	if err := cl.apiReq(ctx, &resp, versionMethod, nil); err != nil {
+	if _, err := cl.apiReq(ctx, &resp, versionMethod, nil); err != nil {
 		return "", err
 	}
 	return resp.Data.Version, nil
@@ -102,7 +104,7 @@ func (cl *BeaconHTTPClient) NodeVersion(ctx context.Context) (string, error) {
 
 func (cl *BeaconHTTPClient) ConfigSpec(ctx context.Context) (eth.APIConfigResponse, error) {
 	var configResp eth.APIConfigResponse
-	if err := cl.apiReq(ctx, &configResp, specMethod, nil); err != nil {
+	if _, err := cl.apiReq(ctx, &configResp, specMethod, nil); err != nil {
 		return eth.APIConfigResponse{}, err
 	}
 	return configResp, nil
@@ -110,7 +112,7 @@ func (cl *BeaconHTTPClient) ConfigSpec(ctx context.Context) (eth.APIConfigRespon
 
 func (cl *BeaconHTTPClient) BeaconGenesis(ctx context.Context) (eth.APIGenesisResponse, error) {
 	var genesisResp eth.APIGenesisResponse
-	if err := cl.apiReq(ctx, &genesisResp, genesisMethod, nil); err != nil {
+	if _, err := cl.apiReq(ctx, &genesisResp, genesisMethod, nil); err != nil {
 		return eth.APIGenesisResponse{}, err
 	}
 	return genesisResp, nil
@@ -125,8 +127,10 @@ func (cl *BeaconHTTPClient) BeaconBlobSideCars(ctx context.Context, fetchAllSide
 			reqQuery.Add("indices", strconv.FormatUint(hashes[i].Index, 10))
 		}
 	}
+
 	var resp eth.APIGetBlobSidecarsResponse
-	if err := cl.apiReq(ctx, &resp, reqPath, reqQuery); err != nil {
+	requestURI, err := cl.apiReq(ctx, &resp, reqPath, reqQuery)
+	if err != nil {
 		return eth.APIGetBlobSidecarsResponse{}, err
 	}
 
@@ -140,7 +144,7 @@ func (cl *BeaconHTTPClient) BeaconBlobSideCars(ctx context.Context, fetchAllSide
 	}
 
 	if len(indices) > 0 {
-		return eth.APIGetBlobSidecarsResponse{}, fmt.Errorf("#returned blobs(%d) != #requested blobs(%d)", len(hashes)-len(indices), len(hashes))
+		return eth.APIGetBlobSidecarsResponse{}, fmt.Errorf("%s #returned blobs(%d) != #requested blobs(%d)", requestURI, len(hashes)-len(indices), len(hashes))
 	}
 	return resp, nil
 }

@@ -206,12 +206,20 @@ func TestBeaconHTTPClient(t *testing.T) {
 	}
 	headers := http.Header{}
 	headers.Add("Accept", "application/json")
-	c.EXPECT().Get(ctx, path, reqQuery, headers).Return(&http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(respBytes))}, nil)
+	requestURI := "http://localhost:1234/eth/v1/beacon/blob_sidecars/2?indices=3&indices=9&indices=11"
+	c.EXPECT().Get(ctx, path, reqQuery, headers).Return(
+		&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(respBytes)),
+			Request: &http.Request{
+				RequestURI: requestURI,
+			},
+		}, nil)
 
 	// BeaconBlobSideCars should return error when client.HTTP returns a 200 with empty list
 	_, err := b.BeaconBlobSideCars(ctx, false, slot, hashes)
 	require.Error(t, err)
-	require.Equal(t, err.Error(), fmt.Sprintf("#returned blobs(%d) != #requested blobs(%d)", 0, len(hashes)))
+	require.Equal(t, err.Error(), fmt.Sprintf("%s #returned blobs(%d) != #requested blobs(%d)", requestURI, 0, len(hashes)))
 }
 
 func TestClientPoolSingle(t *testing.T) {
