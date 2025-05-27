@@ -191,6 +191,7 @@ func (d *DA) Reset(ctx context.Context, base eth.L1BlockRef, baseCfg eth.SystemC
 // GetInput returns the input data for the given commitment bytes. blockNumber is required to lookup
 // the challenge status in the DataAvailabilityChallenge L1 contract.
 func (d *DA) GetInput(ctx context.Context, l1 L1Fetcher, comm CommitmentData, blockId eth.L1BlockRef) (eth.Data, error) {
+	d.log.Warn("in GetInput")
 	// If it's not the right commitment type, report it as an expired commitment in order to skip it
 	if d.cfg.CommitmentType != comm.CommitmentType() {
 		return nil, fmt.Errorf("invalid commitment type; expected: %v, got: %v: %w", d.cfg.CommitmentType, comm.CommitmentType(), ErrExpiredChallenge)
@@ -209,6 +210,7 @@ func (d *DA) GetInput(ctx context.Context, l1 L1Fetcher, comm CommitmentData, bl
 
 	// Fetch the input from the DA storage.
 	data, err := d.storage.GetInput(ctx, comm)
+	d.log.Warn("done getting input from storage")
 	notFound := errors.Is(ErrNotFound, err)
 	if err != nil && !notFound {
 		d.log.Error("failed to get preimage", "err", err)
@@ -256,6 +258,7 @@ func (d *DA) GetInput(ctx context.Context, l1 L1Fetcher, comm CommitmentData, bl
 		return nil, fmt.Errorf("unknown challenge status: %v", status)
 	}
 
+	d.log.Warn("returning data")
 	return data, nil
 }
 
@@ -334,6 +337,7 @@ func (d *DA) loadChallengeEvents(ctx context.Context, l1 L1Fetcher, block eth.Bl
 		return err
 	}
 
+	d.log.Debug("fetched challenge logs", "num", len(logs))
 	for _, log := range logs {
 		i := log.TxIndex
 		status, comm, bn, err := d.decodeChallengeStatus(log)

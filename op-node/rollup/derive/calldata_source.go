@@ -40,13 +40,14 @@ func NewCalldataSource(ctx context.Context, log log.Logger, dsCfg DataSourceConf
 			ref:         ref,
 			dsCfg:       dsCfg,
 			fetcher:     fetcher,
-			log:         log,
+			log:         log.New("origin", ref, "ds", "calldata"),
 			batcherAddr: batcherAddr,
 		}
 	}
 	return &CalldataSource{
 		open: true,
 		data: DataFromEVMTransactions(dsCfg, batcherAddr, txs, log.New("origin", ref)),
+		log:  log.New("origin", ref, "ds", "calldata"),
 	}
 }
 
@@ -79,7 +80,9 @@ func (ds *CalldataSource) Next(ctx context.Context) (eth.Data, error) {
 func DataFromEVMTransactions(dsCfg DataSourceConfig, batcherAddr common.Address, txs types.Transactions, log log.Logger) []eth.Data {
 	out := []eth.Data{}
 	for _, tx := range txs {
+		log.Debug("debugging tx", "hash", tx.Hash(), "to", tx.To(), "rejected", tx.Rejected())
 		if isValidBatchTx(tx, dsCfg.l1Signer, dsCfg.batchInboxAddress, batcherAddr, log) {
+			log.Debug("valid batch tx", "hash", tx.Hash(), "to", tx.To(), "rejected", tx.Rejected())
 			out = append(out, tx.Data())
 		}
 	}

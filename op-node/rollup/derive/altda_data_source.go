@@ -25,7 +25,7 @@ type AltDADataSource struct {
 
 func NewAltDADataSource(log log.Logger, src DataIter, l1 L1Fetcher, fetcher AltDAInputFetcher, id eth.L1BlockRef) *AltDADataSource {
 	return &AltDADataSource{
-		log:     log,
+		log:     log.New("ds", "alt-da"),
 		src:     src,
 		fetcher: fetcher,
 		l1:      l1,
@@ -34,6 +34,7 @@ func NewAltDADataSource(log log.Logger, src DataIter, l1 L1Fetcher, fetcher AltD
 }
 
 func (s *AltDADataSource) Next(ctx context.Context) (eth.Data, error) {
+	s.log.Debug("in next", "ds", "altda")
 	// Process origin syncs the challenge contract events and updates the local challenge states
 	// before we can proceed to fetch the input data. This function can be called multiple times
 	// for the same origin and noop if the origin was already processed. It is also called if
@@ -42,10 +43,12 @@ func (s *AltDADataSource) Next(ctx context.Context) (eth.Data, error) {
 		if errors.Is(err, altda.ErrReorgRequired) {
 			return nil, NewResetError(errors.New("new expired challenge"))
 		}
+		s.log.Debug("could get it", "err", err)
 		return nil, NewTemporaryError(fmt.Errorf("failed to advance altDA L1 origin: %w", err))
 	}
 
 	if s.comm == nil {
+		s.log.Debug("comm was nil")
 		// the l1 source returns the input commitment for the batch.
 		data, err := s.src.Next(ctx)
 		if err != nil {
@@ -65,7 +68,6 @@ func (s *AltDADataSource) Next(ctx context.Context) (eth.Data, error) {
 		// strip the transaction data version byte from the data before decoding.
 		comm, err := altda.DecodeCommitmentData(data[1:])
 		if err != nil {
-			s.log.Warn("invalid commitment", "commitment", data, "err", err)
 			return nil, NotEnoughData
 		}
 		s.comm = comm
@@ -76,6 +78,7 @@ func (s *AltDADataSource) Next(ctx context.Context) (eth.Data, error) {
 	// continued syncing origins detached from the pipeline origin.
 	if errors.Is(err, altda.ErrReorgRequired) {
 		// challenge for a new previously derived commitment expired.
+		s.log.Debug("reorg required")
 		return nil, NewResetError(err)
 	} else if errors.Is(err, altda.ErrExpiredChallenge) {
 		// this commitment was challenged and the challenge expired.
@@ -86,9 +89,11 @@ func (s *AltDADataSource) Next(ctx context.Context) (eth.Data, error) {
 	} else if errors.Is(err, altda.ErrMissingPastWindow) {
 		return nil, NewCriticalError(fmt.Errorf("data for comm %s not available: %w", s.comm, err))
 	} else if errors.Is(err, altda.ErrPendingChallenge) {
+		s.log.Debug("not enough data")
 		// continue stepping without slowing down.
 		return nil, NotEnoughData
 	} else if err != nil {
+		s.log.Debug("new temp error")
 		// return temporary error so we can keep retrying.
 		return nil, NewTemporaryError(fmt.Errorf("failed to fetch input data with comm %s from da service: %w", s.comm, err))
 	}

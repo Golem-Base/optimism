@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/urfave/cli/v2"
 )
 
@@ -103,7 +104,7 @@ func (c CLIConfig) Check() error {
 }
 
 func (c CLIConfig) NewDAClient() *DAClient {
-	return &DAClient{url: c.DAServerURL, verify: c.VerifyOnRead, precompute: !c.GenericDA, getTimeout: c.GetTimeout, putTimeout: c.PutTimeout}
+	return &DAClient{url: c.DAServerURL, verify: c.VerifyOnRead, precompute: !c.GenericDA, getTimeout: c.GetTimeout, putTimeout: c.PutTimeout, log: log.New()}
 }
 
 func ReadCLIConfig(c *cli.Context) CLIConfig {

@@ -40,6 +40,7 @@ func (s *RetryingL1Source) InfoByHash(ctx context.Context, blockHash common.Hash
 }
 
 func (s *RetryingL1Source) InfoAndTxsByHash(ctx context.Context, blockHash common.Hash) (eth.BlockInfo, types.Transactions, error) {
+	s.logger.Info("in retry l1")
 	return retry.Do2(ctx, maxAttempts, s.strategy, func() (eth.BlockInfo, types.Transactions, error) {
 		i, t, err := s.source.InfoAndTxsByHash(ctx, blockHash)
 		if err != nil {
@@ -112,6 +113,7 @@ func (s *RetryingL2Source) ExperimentalEnabled() bool {
 }
 
 func (s *RetryingL2Source) InfoAndTxsByHash(ctx context.Context, blockHash common.Hash) (eth.BlockInfo, types.Transactions, error) {
+	s.logger.Info("in retry l2")
 	return retry.Do2(ctx, maxAttempts, s.strategy, func() (eth.BlockInfo, types.Transactions, error) {
 		i, t, err := s.source.InfoAndTxsByHash(ctx, blockHash)
 		if err != nil {

@@ -111,6 +111,7 @@ func (l *L2Source) NodeByHash(ctx context.Context, hash common.Hash) ([]byte, er
 
 // InfoAndTxsByHash implements prefetcher.L2Source.
 func (l *L2Source) InfoAndTxsByHash(ctx context.Context, blockHash common.Hash) (eth.BlockInfo, types.Transactions, error) {
+	l.logger.Info("in l2_source")
 	if l.ExperimentalEnabled() {
 		return l.experimentalClient.InfoAndTxsByHash(ctx, blockHash)
 	}

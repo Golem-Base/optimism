@@ -68,7 +68,7 @@ func (ds *DataSourceFactory) OpenData(ctx context.Context, ref eth.L1BlockRef, b
 	// Creates a data iterator from blob or calldata source so we can forward it to the altDA source
 	// if enabled as it still requires an L1 data source for fetching input commmitments.
 	var src DataIter
-	if ds.ecotoneTime != nil && ref.Time >= *ds.ecotoneTime {
+	if false && ds.ecotoneTime != nil && ref.Time >= *ds.ecotoneTime {
 		if ds.blobsFetcher == nil {
 			return nil, fmt.Errorf("ecotone upgrade active but beacon endpoint not configured")
 		}
@@ -97,11 +97,13 @@ type DataSourceConfig struct {
 func isValidBatchTx(tx *types.Transaction, l1Signer types.Signer, batchInboxAddr, batcherAddr common.Address, logger log.Logger) bool {
 	// For now, we want to disallow the SetCodeTx type or any future types.
 	if tx.Type() > types.BlobTxType && tx.Type() != types.DepositTxType {
+		logger.Debug("skipped tx", "reason", "wrong type")
 		return false
 	}
 
 	to := tx.To()
 	if to == nil || *to != batchInboxAddr {
+		logger.Debug("skipped tx", "reason", "wrong recipient", "to", to)
 		return false
 	}
 	seqDataSubmitter, err := l1Signer.Sender(tx) // optimization: only derive sender if To is correct
@@ -114,5 +116,8 @@ func isValidBatchTx(tx *types.Transaction, l1Signer types.Signer, batchInboxAddr
 		logger.Warn("tx in inbox with unauthorized submitter", "addr", seqDataSubmitter, "hash", tx.Hash(), "err", err)
 		return false
 	}
+
+	logger.Debug("valid batch tx", "hash", tx.Hash())
+
 	return true
 }

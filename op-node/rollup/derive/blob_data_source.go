@@ -48,6 +48,7 @@ func NewBlobDataSource(ctx context.Context, log log.Logger, dsCfg DataSourceConf
 // ResetError if it cannot find the referenced block or a referenced blob, or TemporaryError for
 // any other failure to fetch a block or blob.
 func (ds *BlobDataSource) Next(ctx context.Context) (eth.Data, error) {
+	ds.log.Info("in next", "ds", "blob")
 	if ds.data == nil {
 		var err error
 		if ds.data, err = ds.open(ctx); err != nil {
