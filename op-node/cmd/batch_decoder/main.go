@@ -150,6 +150,11 @@ func main() {
 					Usage: "Batch Inbox Address. Default value from op-mainnet. " +
 						"Superchain-registry prioritized when given value is inconsistent.",
 				},
+				&cli.PathFlag{
+					Name:     "rollup-config",
+					Usage:    "Path to rollup.json",
+					Required: true,
+				},
 			},
 			Action: func(cliCtx *cli.Context) error {
 				var (
@@ -158,7 +163,17 @@ func main() {
 					BatchInboxAddress common.Address = common.HexToAddress(cliCtx.String("inbox"))
 				)
 				L2ChainID := new(big.Int).SetUint64(cliCtx.Uint64("l2-chain-id"))
-				rollupCfg, err := rollup.LoadOPStackRollupConfig(L2ChainID.Uint64())
+				// rollupCfg, err := rollup.LoadOPStackRollupConfig(L2ChainID.Uint64())
+				file, err := os.Open(cliCtx.Path("rollup-config"))
+				if err != nil {
+					return fmt.Errorf("failed to read rollup config: %w", err)
+				}
+				defer file.Close()
+
+				var rollupCfg rollup.Config
+				if err := rollupCfg.ParseRollupConfig(file); err != nil {
+					return fmt.Errorf("failed to parse rollup config: %w", err)
+				}
 				if err == nil {
 					// prioritize superchain config
 					if L2GenesisTime != rollupCfg.Genesis.L2Time {
@@ -182,7 +197,7 @@ func main() {
 					L2GenesisTime: L2GenesisTime,
 					L2BlockTime:   L2BlockTime,
 				}
-				reassemble.Channels(config, rollupCfg)
+				reassemble.Channels(config, &rollupCfg)
 				return nil
 			},
 		},
