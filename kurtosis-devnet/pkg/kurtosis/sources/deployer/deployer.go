@@ -25,7 +25,7 @@ const (
 	defaultWalletsName          = "wallets.json"
 	defaultStateName            = "state.json"
 	defaultGenesisArtifactName  = "el_cl_genesis_data"
-	defaultMnemonicsName        = "mnemonics.yaml"
+	defaultMnemonicName         = "mnemonics.yaml"
 	defaultGenesisNameTemplate  = "genesis-{{.ChainID}}.json"
 	defaultL1GenesisName        = "genesis.json"
 )
@@ -68,17 +68,18 @@ type WalletList []*Wallet
 type DeployerData struct {
 	L1ValidatorWallets WalletList     `json:"wallets"`
 	State              *DeployerState `json:"state"`
+	L1ChainID          string         `json:"l1_chain_id"`
 }
 
 type Deployer struct {
-	enclave               string
-	deployerArtifactName  string
-	walletsName           string
-	stateName             string
-	genesisArtifactName   string
-	mnemonicsName         string
-	l2GenesisNameTemplate string
-	l1GenesisName         string
+	enclave                 string
+	deployerArtifactName    string
+	walletsName             string
+	stateName               string
+	genesisArtifactName     string
+	l1ValidatorMnemonicName string
+	l2GenesisNameTemplate   string
+	l1GenesisName           string
 }
 
 type DeployerOption func(*Deployer)
@@ -109,7 +110,7 @@ func WithGenesisArtifactName(name string) DeployerOption {
 
 func WithMnemonicsName(name string) DeployerOption {
 	return func(d *Deployer) {
-		d.mnemonicsName = name
+		d.l1ValidatorMnemonicName = name
 	}
 }
 
@@ -121,14 +122,14 @@ func WithGenesisNameTemplate(name string) DeployerOption {
 
 func NewDeployer(enclave string, opts ...DeployerOption) *Deployer {
 	d := &Deployer{
-		enclave:               enclave,
-		deployerArtifactName:  defaultDeployerArtifactName,
-		walletsName:           defaultWalletsName,
-		stateName:             defaultStateName,
-		genesisArtifactName:   defaultGenesisArtifactName,
-		mnemonicsName:         defaultMnemonicsName,
-		l2GenesisNameTemplate: defaultGenesisNameTemplate,
-		l1GenesisName:         defaultL1GenesisName,
+		enclave:                 enclave,
+		deployerArtifactName:    defaultDeployerArtifactName,
+		walletsName:             defaultWalletsName,
+		stateName:               defaultStateName,
+		genesisArtifactName:     defaultGenesisArtifactName,
+		l1ValidatorMnemonicName: defaultMnemonicName,
+		l2GenesisNameTemplate:   defaultGenesisNameTemplate,
+		l1GenesisName:           defaultL1GenesisName,
 	}
 
 	for _, opt := range opts {
@@ -337,12 +338,23 @@ func (d *Deployer) ExtractData(ctx context.Context) (*DeployerData, error) {
 		state.Deployments[id] = deployment
 	}
 
-	l1ValidatorWallets, err := d.getL1ValidatorWallets(deployerArtifact)
+	l1GenesisArtifact, err := fs.GetArtifact(ctx, d.genesisArtifactName)
+	if err != nil {
+		return nil, err
+	}
+
+	l1ValidatorWallets, err := d.getL1ValidatorWallets(l1GenesisArtifact)
+	if err != nil {
+		return nil, err
+	}
+
+	l1ChainID, err := d.getL1ChainID(l1GenesisArtifact)
 	if err != nil {
 		return nil, err
 	}
 
 	return &DeployerData{
+		L1ChainID:          l1ChainID,
 		State:              state,
 		L1ValidatorWallets: l1ValidatorWallets,
 	}, nil
