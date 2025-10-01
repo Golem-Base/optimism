@@ -29,16 +29,13 @@ import (
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
 	"github.com/ethereum-optimism/optimism/op-chain-ops/foundry"
 	"github.com/ethereum-optimism/optimism/op-chain-ops/interopgen"
-	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils"
+	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/blobstore"
+	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/contracts/bindings/emit"
+	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/contracts/bindings/inbox"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/fakebeacon"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
-	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/interop/contracts/bindings/emit"
-	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/interop/contracts/bindings/inbox"
-	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/interop/contracts/bindings/systemconfig"
-	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/wait"
 	"github.com/ethereum-optimism/optimism/op-e2e/system/helpers"
 	l2os "github.com/ethereum-optimism/optimism/op-proposer/proposer"
-	"github.com/ethereum-optimism/optimism/op-service/client"
 	"github.com/ethereum-optimism/optimism/op-service/clock"
 	"github.com/ethereum-optimism/optimism/op-service/dial"
 	"github.com/ethereum-optimism/optimism/op-service/endpoint"
@@ -76,6 +73,7 @@ type SuperSystem interface {
 	Proposer(network string) *l2os.ProposerService
 	AddUser(username string)
 	SupervisorClient() *sources.SupervisorClient
+	DependencySet() *depset.StaticConfigDependencySet
 
 	// L2 client specific
 	L2GethEndpoint(id string, name string) endpoint.RPC
@@ -90,12 +88,11 @@ type SuperSystem interface {
 	ChainID(network string) *big.Int
 	RollupConfig(network string) *rollup.Config
 	L2Genesis(network string) *core.Genesis
-	UserKey(nework, username string) ecdsa.PrivateKey
+	UserKey(network, username string) ecdsa.PrivateKey
 	L2OperatorKey(network string, role devkeys.ChainOperatorRole) ecdsa.PrivateKey
 	Address(network string, username string) common.Address
 	Contract(network string, contractName string) interface{}
-	DeployEmitterContract(network string, username string) common.Address
-	AddDependency(ctx context.Context, network string, dep *big.Int) *types.Receipt
+	DeployEmitterContract(ctx context.Context, network string, username string) common.Address
 	ValidateMessage(
 		ctx context.Context,
 		id string,
@@ -109,6 +106,7 @@ type SuperSystem interface {
 type SuperSystemConfig struct {
 	mempoolFiltering  bool
 	SupportTimeTravel bool
+	BatcherUsesBlobs  bool
 }
 
 // NewSuperSystem creates a new SuperSystem from a recipe. It creates an interopE2ESystem.
@@ -154,9 +152,7 @@ func (s *interopE2ESystem) AdvanceL1Time(duration time.Duration) {
 }
 
 func (s *interopE2ESystem) DisputeGameFactoryAddr() common.Address {
-	// Currently uses the dispute game factory for the first L2 chain.
-	// Ultimately this should be a factory shared by all chains in the dependency set
-	return s.worldDeployment.L2s[s.L2IDs()[0]].DisputeGameFactoryProxy
+	return s.worldDeployment.Interop.DisputeGameFactory
 }
 
 // prepareHDWallet creates a new HD wallet to derive keys from
@@ -176,6 +172,11 @@ func (s *interopE2ESystem) prepareWorld(w WorldResourcePaths) (*interopgen.World
 	// Build the world configuration from the recipe and the HD wallet
 	worldCfg, err := s.recipe.Build(s.hdWallet)
 	require.NoError(s.t, err)
+
+	for _, l2Cfg := range worldCfg.L2s {
+		require.NotNil(s.t, l2Cfg.L2GenesisIsthmusTimeOffset, "expecting isthmus fork to be enabled for interop deployments")
+		require.NotNil(s.t, l2Cfg.L2GenesisIsthmusTimeOffset, "expecting jovian fork to be enabled for interop deployments")
+	}
 
 	// create a logger for the world configuration
 	logger := s.logger.New("role", "world")
@@ -199,7 +200,7 @@ func (s *interopE2ESystem) prepareL1() (*fakebeacon.FakeBeacon, *geth.GethInstan
 	blockTimeL1 := uint64(6)
 	blobPath := s.t.TempDir()
 	bcn := fakebeacon.NewBeacon(s.logger.New("role", "l1_cl"),
-		e2eutils.NewBlobStore(), genesisTimestampL1, blockTimeL1)
+		blobstore.New(), genesisTimestampL1, blockTimeL1)
 	s.t.Cleanup(func() {
 		_ = bcn.Close()
 	})
@@ -214,7 +215,7 @@ func (s *interopE2ESystem) prepareL1() (*fakebeacon.FakeBeacon, *geth.GethInstan
 		l1Clock = s.timeTravelClock
 	}
 	// Start the L1 chain
-	l1Geth, err := geth.InitL1(
+	l1Geth, _, err := geth.InitL1(
 		blockTimeL1,
 		l1FinalizedDistance,
 		s.worldOutput.L1.Genesis,
@@ -293,26 +294,15 @@ func (s *interopE2ESystem) prepareSupervisor() *supervisor.SupervisorService {
 			ListenPort:  0,
 			EnableAdmin: true,
 		},
-		SyncSources: &syncnode.CLISyncNodes{}, // no sync-sources
-		L1RPC:       s.l1.UserRPC().RPC(),
-		Datadir:     path.Join(s.t.TempDir(), "supervisor"),
+		SyncSources:             &syncnode.CLISyncNodes{}, // no sync-sources
+		L1RPC:                   s.l1.UserRPC().RPC(),
+		Datadir:                 path.Join(s.t.TempDir(), "supervisor"),
+		RPCVerificationWarnings: true,
 	}
-	depSet := make(map[eth.ChainID]*depset.StaticConfigDependency)
 
-	// Iterate over the L2 chain configs. The L2 nodes don't exist yet.
-	for _, l2Out := range s.worldOutput.L2s {
-		chainID := eth.ChainIDFromBig(l2Out.Genesis.Config.ChainID)
-		index, err := chainID.ToUInt32()
-		require.NoError(s.t, err)
-		depSet[chainID] = &depset.StaticConfigDependency{
-			ChainIndex:     supervisortypes.ChainIndex(index),
-			ActivationTime: 0,
-			HistoryMinTime: 0,
-		}
-	}
-	stDepSet, err := depset.NewStaticConfigDependencySet(depSet)
+	fullCfgSet, err := worldToFullCfgSet(s.worldOutput)
 	require.NoError(s.t, err)
-	cfg.DependencySetSource = stDepSet
+	cfg.FullConfigSetSource = fullCfgSet
 
 	// Create the supervisor with the configuration
 	super, err := supervisor.SupervisorFromConfig(context.Background(), cfg, logger)
@@ -335,9 +325,8 @@ func (s *interopE2ESystem) SupervisorClient() *sources.SupervisorClient {
 	if s.superClient != nil {
 		return s.superClient
 	}
-	cl, err := client.NewRPC(context.Background(), s.logger, s.supervisor.RPC())
+	superClient, err := dial.DialSupervisorClientWithTimeout(context.Background(), s.logger, s.supervisor.RPC())
 	require.NoError(s.t, err, "failed to dial supervisor RPC")
-	superClient := sources.NewSupervisorClient(cl)
 	s.superClient = superClient
 	return superClient
 }
@@ -415,7 +404,7 @@ func (s *interopE2ESystem) Address(id, username string) common.Address {
 func (s *interopE2ESystem) prepareL2s() map[string]l2Net {
 	l2s := make(map[string]l2Net)
 	for id, l2Out := range s.worldOutput.L2s {
-		l2s[id] = s.newL2(id, l2Out)
+		l2s[id] = s.newL2(id, l2Out, s.DependencySet())
 	}
 	return l2s
 }
@@ -423,17 +412,11 @@ func (s *interopE2ESystem) prepareL2s() map[string]l2Net {
 // prepareContracts prepares contract-bindings for the L2s
 func (s *interopE2ESystem) prepareContracts() {
 	// Add bindings to common contracts for each L2
-	l1GethClient := s.L1GethClient()
-	for id, l2Dep := range s.worldDeployment.L2s {
+	for id := range s.worldDeployment.L2s {
 		{
 			contract, err := inbox.NewInbox(predeploys.CrossL2InboxAddr, s.L2GethClient(id, "sequencer"))
 			require.NoError(s.t, err)
 			s.l2s[id].contracts["inbox"] = contract
-		}
-		{
-			contract, err := systemconfig.NewSystemconfig(l2Dep.SystemConfigProxy, l1GethClient)
-			require.NoError(s.t, err)
-			s.l2s[id].contracts["systemconfig"] = contract
 		}
 	}
 }
@@ -448,7 +431,7 @@ func (s *interopE2ESystem) L1GethClient() *ethclient.Client {
 		rpcEndpoint,
 		func(v string) *rpc.Client {
 			logger := testlog.Logger(s.t, log.LevelInfo)
-			cl, err := dial.DialRPCClientWithTimeout(context.Background(), 30*time.Second, logger, v)
+			cl, err := dial.DialRPCClientWithTimeout(context.Background(), logger, v)
 			require.NoError(s.t, err, "failed to dial L1 eth node instance")
 			return cl
 		})
@@ -514,13 +497,14 @@ func (s *interopE2ESystem) ValidateMessage(
 ) (*types.Receipt, error) {
 	secret := s.UserKey(id, sender)
 	auth, err := bind.NewKeyedTransactorWithChainID(&secret, s.l2s[id].chainID)
+	contract := s.Contract(id, "inbox").(*inbox.Inbox)
 
 	require.NoError(s.t, err)
 
 	auth.GasLimit = uint64(3000_000)
-	auth.GasPrice = big.NewInt(20_000_000_000)
+	auth.GasFeeCap = big.NewInt(21_000_000_000)
+	auth.GasTipCap = big.NewInt(1_000_000_000)
 
-	contract := s.Contract(id, "inbox").(*inbox.Inbox)
 	identifier := inbox.Identifier{
 		Origin:      msgIdentifier.Origin,
 		BlockNumber: new(big.Int).SetUint64(msgIdentifier.BlockNumber),
@@ -528,6 +512,14 @@ func (s *interopE2ESystem) ValidateMessage(
 		Timestamp:   new(big.Int).SetUint64(msgIdentifier.Timestamp),
 		ChainId:     msgIdentifier.ChainID.ToBig(),
 	}
+	access := msgIdentifier.ChecksumArgs(msgHash).Access()
+	auth.AccessList = []types.AccessTuple{
+		{
+			Address:     predeploys.CrossL2InboxAddr,
+			StorageKeys: supervisortypes.EncodeAccessList([]supervisortypes.Access{access}),
+		},
+	}
+
 	tx, err := contract.InboxTransactor.ValidateMessage(auth, identifier, msgHash)
 	if expectedError != nil {
 		require.ErrorContains(s.t, err, expectedError.Error())
@@ -539,37 +531,10 @@ func (s *interopE2ESystem) ValidateMessage(
 	return bind.WaitMined(ctx, s.L2GethClient(id, "sequencer"), tx) // use the sequencer client to wait for the tx
 }
 
-func (s *interopE2ESystem) AddDependency(ctx context.Context, id string, dep *big.Int) *types.Receipt {
-	// There is a note in OPContractsManagerInterop that the proxy-admin is used for now,
-	// even though it should be a separate dependency-set-manager address.
-	secret, err := s.hdWallet.Secret(devkeys.ChainOperatorKey{
-		ChainID: s.l2s[id].chainID,
-		Role:    devkeys.SystemConfigOwner,
-	})
-	require.NoError(s.t, err)
-
-	auth, err := bind.NewKeyedTransactorWithChainID(secret, s.worldOutput.L1.Genesis.Config.ChainID)
-	require.NoError(s.t, err)
-
-	balance, err := s.l1GethClient.BalanceAt(ctx, crypto.PubkeyToAddress(secret.PublicKey), nil)
-	require.NoError(s.t, err)
-	require.False(s.t, balance.Sign() == 0, "system config owner needs a balance")
-
-	auth.GasLimit = uint64(3000000)
-	auth.GasPrice = big.NewInt(20000000000)
-
-	contract := s.Contract(id, "systemconfig").(*systemconfig.Systemconfig)
-	tx, err := contract.SystemconfigTransactor.AddDependency(auth, dep)
-	require.NoError(s.t, err)
-
-	receipt, err := wait.ForReceiptOK(ctx, s.L1GethClient(), tx.Hash())
-	require.NoError(s.t, err)
-	return receipt
-}
-
 // DeployEmitterContract deploys the Emitter contract on the L2
 // it uses the sequencer node to deploy the contract
 func (s *interopE2ESystem) DeployEmitterContract(
+	ctx context.Context,
 	id string,
 	sender string,
 ) common.Address {
@@ -578,7 +543,9 @@ func (s *interopE2ESystem) DeployEmitterContract(
 	require.NoError(s.t, err)
 	auth.GasLimit = uint64(3000000)
 	auth.GasPrice = big.NewInt(20000000000)
-	address, _, _, err := emit.DeployEmit(auth, s.L2GethClient(id, "sequencer"))
+	address, tx, _, err := emit.DeployEmit(auth, s.L2GethClient(id, "sequencer"))
+	require.NoError(s.t, err)
+	_, err = bind.WaitMined(ctx, s.L2GethClient(id, "sequencer"), tx)
 	require.NoError(s.t, err)
 	contract, err := emit.NewEmit(address, s.L2GethClient(id, "sequencer"))
 	require.NoError(s.t, err)
@@ -613,9 +580,15 @@ func (s *interopE2ESystem) Contract(id string, name string) interface{} {
 	return s.l2s[id].contracts[name]
 }
 
+func (s *interopE2ESystem) DependencySet() *depset.StaticConfigDependencySet {
+	stDepSet, err := worldToDepSet(s.worldOutput)
+	require.NoError(s.t, err)
+	return stDepSet
+}
+
 func mustDial(t *testing.T, logger log.Logger) func(v string) *rpc.Client {
 	return func(v string) *rpc.Client {
-		cl, err := dial.DialRPCClientWithTimeout(context.Background(), 30*time.Second, logger, v)
+		cl, err := dial.DialRPCClientWithTimeout(context.Background(), logger, v)
 		require.NoError(t, err, "failed to dial")
 		return cl
 	}
@@ -630,4 +603,29 @@ func writeDefaultJWT(t testing.TB) string {
 		t.Fatalf("failed to prepare jwt file for geth: %v", err)
 	}
 	return jwtPath
+}
+
+func worldToDepSet(world *interopgen.WorldOutput) (*depset.StaticConfigDependencySet, error) {
+	var ids []eth.ChainID
+	for _, l2Out := range world.L2s {
+		chainID := eth.ChainIDFromBig(l2Out.Genesis.Config.ChainID)
+		ids = append(ids, chainID)
+	}
+	eth.SortChainID(ids)
+	depSet := make(map[eth.ChainID]*depset.StaticConfigDependency)
+
+	// Iterate over the L2 chain configs. The L2 nodes don't exist yet.
+	for _, l2Out := range world.L2s {
+		chainID := eth.ChainIDFromBig(l2Out.Genesis.Config.ChainID)
+		depSet[chainID] = &depset.StaticConfigDependency{}
+	}
+	return depset.NewStaticConfigDependencySet(depSet)
+}
+
+func worldToFullCfgSet(world *interopgen.WorldOutput) (depset.FullConfigSetMerged, error) {
+	depSet, err := worldToDepSet(world)
+	if err != nil {
+		return depset.FullConfigSetMerged{}, err
+	}
+	return depset.NewFullConfigSetMerged(world.RollupConfigSet(), depSet)
 }

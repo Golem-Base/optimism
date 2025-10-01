@@ -10,13 +10,13 @@ import (
 
 const (
 	OutfileFlagName                         = "outfile"
-	ArtifactsLocatorFlagName                = "artifacts-locator"
 	WithdrawalDelaySecondsFlagName          = "withdrawal-delay-seconds"
 	MinProposalSizeBytesFlagName            = "min-proposal-size-bytes"
 	ChallengePeriodSecondsFlagName          = "challenge-period-seconds"
 	ProofMaturityDelaySecondsFlagName       = "proof-maturity-delay-seconds"
 	DisputeGameFinalityDelaySecondsFlagName = "dispute-game-finality-delay-seconds"
 	MIPSVersionFlagName                     = "mips-version"
+	DevFeatureBitmapFlagName                = "dev-feature-bitmap"
 	ProxyOwnerFlagName                      = "proxy-owner"
 	SuperchainProxyAdminOwnerFlagName       = "superchain-proxy-admin-owner"
 	ProtocolVersionsOwnerFlagName           = "protocol-versions-owner"
@@ -32,11 +32,6 @@ var (
 		Usage:   "Output file. Use - for stdout.",
 		EnvVars: deployer.PrefixEnvVar("OUTFILE"),
 		Value:   "-",
-	}
-	ArtifactsLocatorFlag = &cli.StringFlag{
-		Name:    ArtifactsLocatorFlagName,
-		Usage:   "Locator for artifacts.",
-		EnvVars: deployer.PrefixEnvVar("ARTIFACTS_LOCATOR"),
 	}
 	WithdrawalDelaySecondsFlag = &cli.Uint64Flag{
 		Name:    WithdrawalDelaySecondsFlagName,
@@ -73,6 +68,12 @@ var (
 		Usage:   "MIPS version.",
 		EnvVars: deployer.PrefixEnvVar("MIPS_VERSION"),
 		Value:   standard.MIPSVersion,
+	}
+	DevFeatureBitmapFlag = &cli.StringFlag{
+		Name:    DevFeatureBitmapFlagName,
+		Usage:   "Development feature bitmap.",
+		EnvVars: deployer.PrefixEnvVar("DEV_FEATURE_BITMAP"),
+		Value:   common.Hash{}.Hex(),
 	}
 	ProxyOwnerFlag = &cli.StringFlag{
 		Name:    ProxyOwnerFlagName,
@@ -113,11 +114,6 @@ var (
 		Usage:   "Recommended protocol version (semver)",
 		EnvVars: deployer.PrefixEnvVar("RECOMMENDED_PROTOCOL_VERSION"),
 	}
-	L1ContractsReleaseFlag = &cli.StringFlag{
-		Name:    "l1-contracts-release",
-		Usage:   "Release version to set OPCM implementations for, of the format `op-contracts/vX.Y.Z`.",
-		EnvVars: deployer.PrefixEnvVar("L1_CONTRACTS_RELEASE"),
-	}
 	SuperchainConfigProxyFlag = &cli.StringFlag{
 		Name:    "superchain-config-proxy",
 		Usage:   "Superchain config proxy.",
@@ -133,15 +129,20 @@ var (
 		Usage:   "Upgrade controller.",
 		EnvVars: deployer.PrefixEnvVar("UPGRADE_CONTROLLER"),
 	}
-	UseInteropFlag = &cli.BoolFlag{
-		Name:    "use-interop",
-		Usage:   "If true, deploy Interop implementations.",
-		EnvVars: deployer.PrefixEnvVar("USE_INTEROP"),
+	SuperchainProxyAdminFlag = &cli.StringFlag{
+		Name:    "superchain-proxy-admin",
+		Usage:   "Superchain proxy admin.",
+		EnvVars: deployer.PrefixEnvVar("SUPERCHAIN_PROXY_ADMIN"),
 	}
 	ConfigFileFlag = &cli.StringFlag{
 		Name:    "config",
 		Usage:   "Path to a JSON file",
 		EnvVars: deployer.PrefixEnvVar("CONFIG"),
+	}
+	ChallengerFlag = &cli.StringFlag{
+		Name:    "challenger",
+		Usage:   "Challenger.",
+		EnvVars: deployer.PrefixEnvVar("CHALLENGER"),
 	}
 )
 
@@ -149,9 +150,9 @@ var ImplementationsFlags = []cli.Flag{
 	deployer.L1RPCURLFlag,
 	deployer.PrivateKeyFlag,
 	OutfileFlag,
-	ArtifactsLocatorFlag,
-	L1ContractsReleaseFlag,
+	deployer.ArtifactsLocatorFlag,
 	MIPSVersionFlag,
+	DevFeatureBitmapFlag,
 	WithdrawalDelaySecondsFlag,
 	MinProposalSizeBytesFlag,
 	ChallengePeriodSecondsFlag,
@@ -160,14 +161,15 @@ var ImplementationsFlags = []cli.Flag{
 	SuperchainConfigProxyFlag,
 	ProtocolVersionsProxyFlag,
 	UpgradeControllerFlag,
-	UseInteropFlag,
+	SuperchainProxyAdminFlag,
+	ChallengerFlag,
 }
 
 var ProxyFlags = []cli.Flag{
 	deployer.L1RPCURLFlag,
 	deployer.PrivateKeyFlag,
 	OutfileFlag,
-	ArtifactsLocatorFlag,
+	deployer.ArtifactsLocatorFlag,
 	ProxyOwnerFlag,
 }
 
@@ -175,7 +177,7 @@ var SuperchainFlags = []cli.Flag{
 	deployer.L1RPCURLFlag,
 	deployer.PrivateKeyFlag,
 	OutfileFlag,
-	ArtifactsLocatorFlag,
+	deployer.ArtifactsLocatorFlag,
 	SuperchainProxyAdminOwnerFlag,
 	ProtocolVersionsOwnerFlag,
 	GuardianFlag,
@@ -188,7 +190,7 @@ var ValidatorFlags = []cli.Flag{
 	deployer.L1RPCURLFlag,
 	deployer.PrivateKeyFlag,
 	OutfileFlag,
-	ArtifactsLocatorFlag,
+	deployer.ArtifactsLocatorFlag,
 	ConfigFileFlag,
 }
 
@@ -210,11 +212,5 @@ var Commands = []*cli.Command{
 		Usage:  "Bootstrap the Superchain configuration",
 		Flags:  cliapp.ProtectFlags(SuperchainFlags),
 		Action: SuperchainCLI,
-	},
-	{
-		Name:   "validator",
-		Usage:  "Bootstrap the StandardValidator contracts",
-		Flags:  cliapp.ProtectFlags(ValidatorFlags),
-		Action: ValidatorCLI,
 	},
 }

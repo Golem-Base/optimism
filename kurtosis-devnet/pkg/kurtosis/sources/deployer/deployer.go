@@ -13,10 +13,12 @@ import (
 	ktfs "github.com/ethereum-optimism/optimism/devnet-sdk/kt/fs"
 	"github.com/ethereum-optimism/optimism/devnet-sdk/types"
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -25,8 +27,9 @@ const (
 	defaultWalletsName          = "wallets.json"
 	defaultStateName            = "state.json"
 	defaultGenesisArtifactName  = "el_cl_genesis_data"
-	defaultMnemonicsName        = "mnemonics.yaml"
+	defaultMnemonicName         = "mnemonics.yaml"
 	defaultGenesisNameTemplate  = "genesis-{{.ChainID}}.json"
+	defaultRollupNameTemplate   = "rollup-{{.ChainID}}.json"
 	defaultL1GenesisName        = "genesis.json"
 )
 
@@ -37,10 +40,12 @@ type DeploymentAddresses map[string]types.Address
 type DeploymentStateAddresses map[string]DeploymentAddresses
 
 type DeploymentState struct {
-	Addresses DeploymentAddresses `json:"addresses"`
-	L1Wallets WalletList          `json:"l1_wallets"`
-	L2Wallets WalletList          `json:"l2_wallets"`
-	Config    *params.ChainConfig `json:"chain_config"`
+	L1Addresses  DeploymentAddresses `json:"l1_addresses"`
+	L2Addresses  DeploymentAddresses `json:"l2_addresses"`
+	L1Wallets    WalletList          `json:"l1_wallets"`
+	L2Wallets    WalletList          `json:"l2_wallets"`
+	Config       *params.ChainConfig `json:"chain_config"`
+	RollupConfig *rollup.Config      `json:"rollup_config"`
 }
 
 type DeployerState struct {
@@ -51,7 +56,7 @@ type DeployerState struct {
 // StateFile represents the structure of the state.json file
 type StateFile struct {
 	OpChainDeployments        []map[string]interface{} `json:"opChainDeployments"`
-	SuperChainDeployment      map[string]interface{}   `json:"superchainDeployment"`
+	SuperChainContracts       map[string]interface{}   `json:"superchainContracts"`
 	ImplementationsDeployment map[string]interface{}   `json:"implementationsDeployment"`
 }
 
@@ -64,21 +69,25 @@ type Wallet struct {
 
 // WalletList holds a list of wallets
 type WalletList []*Wallet
+type WalletMap map[string]*Wallet
 
 type DeployerData struct {
-	L1ValidatorWallets WalletList     `json:"wallets"`
-	State              *DeployerState `json:"state"`
+	L1ValidatorWallets WalletList          `json:"wallets"`
+	State              *DeployerState      `json:"state"`
+	L1ChainID          string              `json:"l1_chain_id"`
+	L1ChainConfig      *params.ChainConfig `json:"l1_chain_config"`
 }
 
 type Deployer struct {
-	enclave               string
-	deployerArtifactName  string
-	walletsName           string
-	stateName             string
-	genesisArtifactName   string
-	mnemonicsName         string
-	l2GenesisNameTemplate string
-	l1GenesisName         string
+	enclave                 string
+	deployerArtifactName    string
+	walletsName             string
+	stateName               string
+	genesisArtifactName     string
+	l1ValidatorMnemonicName string
+	l2GenesisNameTemplate   string
+	l2RollupNameTemplate    string
+	l1GenesisName           string
 }
 
 type DeployerOption func(*Deployer)
@@ -109,7 +118,7 @@ func WithGenesisArtifactName(name string) DeployerOption {
 
 func WithMnemonicsName(name string) DeployerOption {
 	return func(d *Deployer) {
-		d.mnemonicsName = name
+		d.l1ValidatorMnemonicName = name
 	}
 }
 
@@ -119,16 +128,23 @@ func WithGenesisNameTemplate(name string) DeployerOption {
 	}
 }
 
+func WithRollupNameTemplate(name string) DeployerOption {
+	return func(d *Deployer) {
+		d.l2RollupNameTemplate = name
+	}
+}
+
 func NewDeployer(enclave string, opts ...DeployerOption) *Deployer {
 	d := &Deployer{
-		enclave:               enclave,
-		deployerArtifactName:  defaultDeployerArtifactName,
-		walletsName:           defaultWalletsName,
-		stateName:             defaultStateName,
-		genesisArtifactName:   defaultGenesisArtifactName,
-		mnemonicsName:         defaultMnemonicsName,
-		l2GenesisNameTemplate: defaultGenesisNameTemplate,
-		l1GenesisName:         defaultL1GenesisName,
+		enclave:                 enclave,
+		deployerArtifactName:    defaultDeployerArtifactName,
+		walletsName:             defaultWalletsName,
+		stateName:               defaultStateName,
+		genesisArtifactName:     defaultGenesisArtifactName,
+		l1ValidatorMnemonicName: defaultMnemonicName,
+		l2GenesisNameTemplate:   defaultGenesisNameTemplate,
+		l2RollupNameTemplate:    defaultRollupNameTemplate,
+		l1GenesisName:           defaultL1GenesisName,
 	}
 
 	for _, opt := range opts {
@@ -156,16 +172,22 @@ func parseWalletsFile(r io.Reader) (map[string]WalletList, error) {
 
 	for id, chain := range rawData {
 		// Create a map to store wallets by name
-		walletMap := make(map[string]Wallet)
+		walletMap := make(WalletMap)
 		hasAddress := make(map[string]bool)
 
 		// First pass: collect addresses
 		for key, value := range chain {
 			if strings.HasSuffix(key, "Address") {
 				name := strings.TrimSuffix(key, "Address")
-				wallet := walletMap[name]
-				wallet.Address = common.HexToAddress(value)
-				wallet.Name = name
+				wallet, ok := walletMap[name]
+				if !ok || wallet == nil {
+					wallet = &Wallet{
+						Name:    name,
+						Address: common.HexToAddress(value),
+					}
+				} else {
+					log.Warn("duplicate wallet name key in wallets file", "name", name)
+				}
 				walletMap[name] = wallet
 				hasAddress[name] = true
 			}
@@ -187,7 +209,7 @@ func parseWalletsFile(r io.Reader) (map[string]WalletList, error) {
 		wl := make(WalletList, 0, len(walletMap))
 		for name, wallet := range walletMap {
 			if hasAddress[name] {
-				wl = append(wl, &wallet)
+				wl = append(wl, wallet)
 			}
 		}
 
@@ -225,11 +247,10 @@ func parseStateFile(r io.Reader) (*DeployerState, error) {
 	}
 
 	mapDeployment := func(deployment map[string]interface{}) DeploymentAddresses {
-		addrSuffix := "Address"
 		addresses := make(DeploymentAddresses)
 		for key, value := range deployment {
-			if strings.HasSuffix(key, addrSuffix) {
-				addresses[strings.TrimSuffix(key, addrSuffix)] = common.HexToAddress(value.(string))
+			if strings.HasSuffix(key, "Proxy") || strings.HasSuffix(key, "Impl") {
+				addresses[key] = common.HexToAddress(value.(string))
 			}
 		}
 		return addresses
@@ -252,18 +273,28 @@ func parseStateFile(r io.Reader) (*DeployerState, error) {
 			continue
 		}
 
-		addresses := mapDeployment(deployment)
+		l1Addresses := mapDeployment(deployment)
 
-		if len(addresses) > 0 {
-			result.Deployments[id] = DeploymentState{
-				Addresses: addresses,
+		// op-deployer currently does not categorize L2 addresses
+		// so we need to map them manually.
+		// TODO: Update op-deployer to sort rollup contracts by category
+		l2Addresses := make(DeploymentAddresses)
+		for _, addressName := range []string{"OptimismMintableErc20FactoryProxy"} {
+			if addr, ok := l1Addresses[addressName]; ok {
+				l2Addresses[addressName] = addr
+				delete(l1Addresses, addressName)
 			}
+		}
+
+		result.Deployments[id] = DeploymentState{
+			L1Addresses: l1Addresses,
+			L2Addresses: l2Addresses,
 		}
 	}
 
 	result.Addresses = mapDeployment(state.ImplementationsDeployment)
 	// merge the superchain and implementations addresses
-	for key, value := range mapDeployment(state.SuperChainDeployment) {
+	for key, value := range mapDeployment(state.SuperChainContracts) {
 		result.Addresses[key] = value
 	}
 
@@ -334,30 +365,73 @@ func (d *Deployer) ExtractData(ctx context.Context) (*DeployerData, error) {
 
 		// Store the genesis data in the deployment state
 		deployment.Config = genesis.Config
+
+		rollupBuffer := bytes.NewBuffer(nil)
+		rollupName, err := d.renderRollupNameTemplate(id)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := deployerArtifact.ExtractFiles(
+			ktfs.NewArtifactFileWriter(rollupName, rollupBuffer),
+		); err != nil {
+			return nil, err
+		}
+
+		// Parse the genesis file JSON into a core.Genesis struct
+		var rollupCfg rollup.Config
+		if err := json.NewDecoder(rollupBuffer).Decode(&rollupCfg); err != nil {
+			return nil, fmt.Errorf("failed to parse rollup file %s in artifact %s for chain ID %s: %w", rollupName, d.deployerArtifactName, id, err)
+		}
+
+		// Store the data in the deployment state
+		deployment.Config = genesis.Config
+		deployment.RollupConfig = &rollupCfg
+
 		state.Deployments[id] = deployment
 	}
 
-	l1ValidatorWallets, err := d.getL1ValidatorWallets(deployerArtifact)
+	l1GenesisArtifact, err := fs.GetArtifact(ctx, d.genesisArtifactName)
+	if err != nil {
+		return nil, err
+	}
+
+	l1ValidatorWallets, err := d.getL1ValidatorWallets(l1GenesisArtifact)
+	if err != nil {
+		return nil, err
+	}
+
+	l1ChainConfig, err := d.getConfig(l1GenesisArtifact)
 	if err != nil {
 		return nil, err
 	}
 
 	return &DeployerData{
+		L1ChainID:          l1ChainConfig.ChainID.String(),
 		State:              state,
 		L1ValidatorWallets: l1ValidatorWallets,
+		L1ChainConfig:      l1ChainConfig,
 	}, nil
 }
 
 func (d *Deployer) renderGenesisNameTemplate(chainID string) (string, error) {
-	tmpl, err := template.New("genesis").Parse(d.l2GenesisNameTemplate)
+	return d.renderNameTemplate(d.l2GenesisNameTemplate, chainID)
+}
+
+func (d *Deployer) renderRollupNameTemplate(chainID string) (string, error) {
+	return d.renderNameTemplate(d.l2RollupNameTemplate, chainID)
+}
+
+func (d *Deployer) renderNameTemplate(t, chainID string) (string, error) {
+	tmpl, err := template.New("").Parse(t)
 	if err != nil {
-		return "", fmt.Errorf("failed to compile genesis name template %s: %w", d.l2GenesisNameTemplate, err)
+		return "", fmt.Errorf("failed to compile name template %s: %w", t, err)
 	}
 
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, map[string]string{"ChainID": chainID})
 	if err != nil {
-		return "", fmt.Errorf("failed to execute name template %s: %w", d.l2GenesisNameTemplate, err)
+		return "", fmt.Errorf("failed to execute name template %s: %w", t, err)
 	}
 
 	return buf.String(), nil

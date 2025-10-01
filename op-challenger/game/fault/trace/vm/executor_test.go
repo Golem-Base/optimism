@@ -39,11 +39,11 @@ func TestGenerateProof(t *testing.T) {
 	}
 
 	inputs := utils.LocalGameInputs{
-		L1Head:        common.Hash{0x11},
-		L2Head:        common.Hash{0x22},
-		L2OutputRoot:  common.Hash{0x33},
-		L2Claim:       common.Hash{0x44},
-		L2BlockNumber: big.NewInt(3333),
+		L1Head:           common.Hash{0x11},
+		L2Head:           common.Hash{0x22},
+		L2OutputRoot:     common.Hash{0x33},
+		L2Claim:          common.Hash{0x44},
+		L2SequenceNumber: big.NewInt(3333),
 	}
 
 	info := &mipsevm.DebugInfo{
@@ -229,19 +229,24 @@ func newMetrics() *capturingVmMetrics {
 }
 
 type capturingVmMetrics struct {
-	executionTimeRecordCount int
-	memoryUsed               hexutil.Uint64
-	steps                    uint64
-	rmwSuccessCount          uint64
-	rmwFailCount             uint64
-	maxStepsBetweenLLAndSC   uint64
-	reservationInvalidations uint64
-	forcedPreemptions        uint64
-	idleStepsThread0         uint64
+	executionTimeRecordCount  int
+	memoryUsed                hexutil.Uint64
+	steps                     uint64
+	instructionCacheMissCount uint64
+	rmwSuccessCount           uint64
+	rmwFailCount              uint64
+	maxStepsBetweenLLAndSC    uint64
+	reservationInvalidations  uint64
+	forcedPreemptions         uint64
+	idleStepsThread0          uint64
 }
 
 func (c *capturingVmMetrics) RecordSteps(val uint64) {
 	c.steps = val
+}
+
+func (c *capturingVmMetrics) RecordInstructionCacheMissCount(val uint64) {
+	c.instructionCacheMissCount = val
 }
 
 func (c *capturingVmMetrics) RecordExecutionTime(t time.Duration) {

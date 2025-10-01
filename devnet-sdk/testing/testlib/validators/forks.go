@@ -23,7 +23,11 @@ func getChainConfig(t systest.T, sys system.System, chainIdx uint64) (*params.Ch
 		return nil, nil, fmt.Errorf("failed to get chain config for L2 chain %d: %w", chainIdx, err)
 	}
 
-	block, err := chain.Node().BlockByNumber(t.Context(), nil)
+	if len(chain.Nodes()) == 0 {
+		return nil, nil, fmt.Errorf("no nodes found for L2 chain %d", chainIdx)
+	}
+
+	block, err := chain.Nodes()[0].BlockByNumber(t.Context(), nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get latest block for L2 chain %d: %w", chainIdx, err)
 	}
@@ -58,6 +62,8 @@ func IsForkActivated(c *params.ChainConfig, forkName rollup.ForkName, timestamp 
 		return c.IsOptimismHolocene(timestamp), nil
 	case rollup.Isthmus:
 		return c.IsOptimismIsthmus(timestamp), nil
+	case rollup.Jovian:
+		return c.IsOptimismJovian(timestamp), nil
 	case rollup.Interop:
 		return c.IsInterop(timestamp), nil
 	default:

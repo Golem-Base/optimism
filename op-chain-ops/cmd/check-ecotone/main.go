@@ -176,7 +176,7 @@ func makeCommandAction(fn CheckAction) func(c *cli.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to dial L2 RPC: %w", err)
 		}
-		rollupCl, err := dial.DialRollupClientWithTimeout(c.Context, time.Second*20, logger, c.String(EndpointRollup.Name))
+		rollupCl, err := dial.DialRollupClientWithTimeout(c.Context, logger, c.String(EndpointRollup.Name))
 		if err != nil {
 			return fmt.Errorf("failed to dial rollup node RPC: %w", err)
 		}
@@ -500,7 +500,7 @@ func checkBlobTxDenial(ctx context.Context, env *actionEnv) error {
 	for i := 0; i < 4096; i++ {
 		blob[32*i] &= 0b0011_1111
 	}
-	sidecar, blobHashes, err := txmgr.MakeSidecar([]*eth.Blob{&blob})
+	sidecar, blobHashes, err := txmgr.MakeSidecar([]*eth.Blob{&blob}, false)
 	if err != nil {
 		return fmt.Errorf("failed to make sidecar: %w", err)
 	}
@@ -786,7 +786,7 @@ func checkL1Fees(ctx context.Context, env *actionEnv) error {
 		Data:       []byte("hello"),
 		AccessList: nil,
 	}
-	tx, err := types.SignNewTx(env.key, types.NewLondonSigner(txData.ChainID), txData)
+	tx, err := types.SignNewTx(env.key, types.NewIsthmusSigner(txData.ChainID), txData)
 	if err != nil {
 		return fmt.Errorf("failed to sign test tx: %w", err)
 	}

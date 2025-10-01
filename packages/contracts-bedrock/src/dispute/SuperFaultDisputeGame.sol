@@ -14,7 +14,7 @@ import {
     Duration,
     Timestamp,
     Hash,
-    OutputRoot,
+    Proposal,
     LibClock,
     LocalPreimageKey,
     VMStatuses
@@ -49,7 +49,9 @@ import {
     GameNotFinalized,
     InvalidBondDistributionMode,
     GameNotResolved,
-    ReservedGameType
+    ReservedGameType,
+    GamePaused,
+    BadExtraData
 } from "src/dispute/lib/Errors.sol";
 
 // Interfaces
@@ -163,9 +165,9 @@ contract SuperFaultDisputeGame is Clone, ISemver {
     Position internal constant ROOT_POSITION = Position.wrap(1);
 
     /// @notice Semantic version.
-    /// @custom:semver 0.1.0-beta.1
+    /// @custom:semver 0.5.0
     function version() public pure virtual returns (string memory) {
-        return "0.1.0-beta.1";
+        return "0.5.0";
     }
 
     /// @notice The starting timestamp of the game
@@ -199,7 +201,7 @@ contract SuperFaultDisputeGame is Clone, ISemver {
     mapping(uint256 => ResolutionCheckpoint) public resolutionCheckpoints;
 
     /// @notice The latest finalized output root, serving as the anchor for output bisection.
-    OutputRoot public startingOutputRoot;
+    Proposal public startingProposal;
 
     /// @notice A boolean for whether or not the game type was respected when the game was created.
     bool public wasRespectedGameTypeWhenCreated;
@@ -278,13 +280,13 @@ contract SuperFaultDisputeGame is Clone, ISemver {
         //
         // Explicit checks:
         // - The game must not have already been initialized.
-        // - An output root cannot be proposed at or before the starting block number.
+        // - An output root cannot be proposed at or before the starting l2SequenceNumber.
 
         // INVARIANT: The game must not have already been initialized.
         if (initialized) revert AlreadyInitialized();
 
         // Grab the latest anchor root.
-        (Hash root, uint256 rootBlockNumber) = ANCHOR_STATE_REGISTRY.getAnchorRoot();
+        (Hash root, uint256 rootL2SequenceNumber) = ANCHOR_STATE_REGISTRY.getAnchorRoot();
 
         // Should only happen if this is a new game type that hasn't been set up yet.
         if (root.raw() == bytes32(0)) revert AnchorRootNotFound();
@@ -292,8 +294,8 @@ contract SuperFaultDisputeGame is Clone, ISemver {
         // Prevent initializing right away with an invalid claim state that is used as convention
         if (rootClaim().raw() == INVALID_ROOT_CLAIM) revert SuperFaultDisputeGameInvalidRootClaim();
 
-        // Set the starting output root.
-        startingOutputRoot = OutputRoot({ l2BlockNumber: rootBlockNumber, root: root });
+        // Set the starting Proposal.
+        startingProposal = Proposal({ l2SequenceNumber: rootL2SequenceNumber, root: root });
 
         // Revert if the calldata size is not the expected length.
         //
@@ -301,24 +303,18 @@ contract SuperFaultDisputeGame is Clone, ISemver {
         // in the factory, but are not used by the game, which would allow for multiple dispute games for the same
         // output proposal to be created.
         //
-        // Expected length: 0x7A
-        // - 0x04 selector
-        // - 0x14 creator address
-        // - 0x20 root claim
-        // - 0x20 l1 head
-        // - 0x20 extraData
-        // - 0x02 CWIA bytes
-        assembly {
-            if iszero(eq(calldatasize(), 0x7A)) {
-                // Store the selector for `BadExtraData()` & revert
-                mstore(0x00, 0x9824bdab)
-                revert(0x1C, 0x04)
-            }
-        }
+        // Expected length: 122 bytes
+        // - 4 bytes selector
+        // - 20 bytes creator address
+        // - 32 bytes root claim
+        // - 32 bytes l1 head
+        // - 32 bytes extraData
+        // - 2 bytes CWIA length
+        if (msg.data.length != 122) revert BadExtraData();
 
-        // Do not allow the game to be initialized if the root claim corresponds to a block at or before the
-        // configured starting block number.
-        if (l2BlockNumber() <= rootBlockNumber) revert UnexpectedRootClaim(rootClaim());
+        // Do not allow the game to be initialized if the root claim corresponds to a l2 sequence number (timestamp) at
+        // or before the configured starting sequence number.
+        if (l2SequenceNumber() <= rootL2SequenceNumber) revert UnexpectedRootClaim(rootClaim());
 
         // Set the root claim
         claimData.push(
@@ -597,7 +593,7 @@ contract SuperFaultDisputeGame is Clone, ISemver {
             // Load the disputed proposal's output root
             oracle.loadLocalData(_ident, uuid.raw(), disputed.raw(), 32, _partOffset);
         } else if (_ident == LocalPreimageKey.DISPUTED_L2_BLOCK_NUMBER) {
-            oracle.loadLocalData(_ident, uuid.raw(), bytes32(l2BlockNumber() << 0xC0), 8, _partOffset);
+            oracle.loadLocalData(_ident, uuid.raw(), bytes32(l2SequenceNumber() << 0xC0), 8, _partOffset);
         } else {
             revert InvalidLocalIdent();
         }
@@ -615,19 +611,19 @@ contract SuperFaultDisputeGame is Clone, ISemver {
         numRemainingChildren_ = challengeIndicesLen - checkpoint.subgameIndex;
     }
 
-    /// @notice The l2BlockNumber of the disputed output root in the `L2OutputOracle`.
-    function l2BlockNumber() public pure returns (uint256 l2BlockNumber_) {
-        l2BlockNumber_ = _getArgUint256(0x54);
+    /// @notice The l2SequenceNumber (timestamp) of the disputed super root in game root claim.
+    function l2SequenceNumber() public pure returns (uint256 l2SequenceNumber_) {
+        l2SequenceNumber_ = _getArgUint256(84);
     }
 
-    /// @notice Only the starting block number of the game.
-    function startingBlockNumber() external view returns (uint256 startingBlockNumber_) {
-        startingBlockNumber_ = startingOutputRoot.l2BlockNumber;
+    /// @notice Only the starting sequence number (timestamp) of the game.
+    function startingSequenceNumber() external view returns (uint256 startingSequenceNumber_) {
+        startingSequenceNumber_ = startingProposal.l2SequenceNumber;
     }
 
-    /// @notice Starting output root and block number of the game.
+    /// @notice Starting super root of the game.
     function startingRootHash() external view returns (Hash startingRootHash_) {
-        startingRootHash_ = startingOutputRoot.root;
+        startingRootHash_ = startingProposal.root;
     }
 
     ////////////////////////////////////////////////////////////////
@@ -771,21 +767,21 @@ contract SuperFaultDisputeGame is Clone, ISemver {
     /// @dev `clones-with-immutable-args` argument #1
     /// @return creator_ The creator of the dispute game.
     function gameCreator() public pure returns (address creator_) {
-        creator_ = _getArgAddress(0x00);
+        creator_ = _getArgAddress(0);
     }
 
     /// @notice Getter for the root claim.
     /// @dev `clones-with-immutable-args` argument #2
     /// @return rootClaim_ The root claim of the DisputeGame.
     function rootClaim() public pure returns (Claim rootClaim_) {
-        rootClaim_ = Claim.wrap(_getArgBytes32(0x14));
+        rootClaim_ = Claim.wrap(_getArgBytes32(20));
     }
 
     /// @notice Getter for the parent hash of the L1 block when the dispute game was created.
     /// @dev `clones-with-immutable-args` argument #3
     /// @return l1Head_ The parent hash of the L1 block when the dispute game was created.
     function l1Head() public pure returns (Hash l1Head_) {
-        l1Head_ = Hash.wrap(_getArgBytes32(0x34));
+        l1Head_ = Hash.wrap(_getArgBytes32(52));
     }
 
     /// @notice Getter for the extra data.
@@ -794,7 +790,7 @@ contract SuperFaultDisputeGame is Clone, ISemver {
     function extraData() public pure returns (bytes memory extraData_) {
         // The extra data starts at the second word within the cwia calldata and
         // is 32 bytes long.
-        extraData_ = _getArgBytes(0x54, 0x20);
+        extraData_ = _getArgBytes(84, 32);
     }
 
     /// @notice A compliant implementation of this interface should return the components of the
@@ -908,6 +904,15 @@ contract SuperFaultDisputeGame is Clone, ISemver {
     /// @notice Closes out the game, determines the bond distribution mode, attempts to register
     ///         the game as the anchor game, and emits an event.
     function closeGame() public {
+        // We won't close the game if the system is currently paused. Paused games are temporarily
+        // invalid which would cause the game to go into refund mode and potentially cause some
+        // confusion for honest challengers. By blocking the game from being closed while the
+        // system is paused, the game will only go into refund mode if it ends up being explicitly
+        // invalidated in the AnchorStateRegistry.
+        if (ANCHOR_STATE_REGISTRY.paused()) {
+            revert GamePaused();
+        }
+
         // If the bond distribution mode has already been determined, we can return early.
         if (bondDistributionMode == BondDistributionMode.REFUND || bondDistributionMode == BondDistributionMode.NORMAL)
         {
@@ -1060,7 +1065,7 @@ contract SuperFaultDisputeGame is Clone, ISemver {
         view
     {
         // The root claim of an execution trace bisection sub-game must:
-        // 1. Signal that the VM panicked or resulted in an invalid transition if the disputed output root
+        // 1. Signal that the VM panicked or resulted in an invalid transition if the disputed super root
         //    was made by the opposing party.
         // 2. Signal that the VM resulted in a valid transition if the disputed output root was made by the same party.
 
@@ -1162,14 +1167,14 @@ contract SuperFaultDisputeGame is Clone, ISemver {
         // 2. If it was a defense, the starting output root is `claim`, and the disputed output root is
         //    elsewhere in the DAG (it must commit to the block # index at depth of `outputPos + 1`).
         if (wasAttack) {
-            // If this is an attack on the first output root (the block directly after the starting
-            // block number), the starting claim nor position exists in the tree. We leave these as
+            // If this is an attack on the first super root (the block directly after the starting
+            // timestamp), the starting claim nor position exists in the tree. We leave these as
             // 0, which can be easily identified due to 0 being an invalid Gindex.
             if (outputPos.indexAtDepth() > 0) {
                 ClaimData storage starting = _findTraceAncestor(Position.wrap(outputPos.raw() - 1), claimIdx, true);
                 (startingClaim_, startingPos_) = (starting.claim, starting.position);
             } else {
-                startingClaim_ = Claim.wrap(startingOutputRoot.root.raw());
+                startingClaim_ = Claim.wrap(startingProposal.root.raw());
             }
             (disputedClaim_, disputedPos_) = (claim.claim, claim.position);
         } else {

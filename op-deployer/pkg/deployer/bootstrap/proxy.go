@@ -77,7 +77,7 @@ func ProxyCLI(cliCtx *cli.Context) error {
 	l1RPCUrl := cliCtx.String(deployer.L1RPCURLFlagName)
 	privateKey := cliCtx.String(deployer.PrivateKeyFlagName)
 	outfile := cliCtx.String(OutfileFlagName)
-	artifactsURLStr := cliCtx.String(ArtifactsLocatorFlagName)
+	artifactsURLStr := cliCtx.String(deployer.ArtifactsLocatorFlagName)
 	cacheDir := cliCtx.String(deployer.CacheDirFlag.Name)
 
 	artifactsLocator := new(artifacts.Locator)
@@ -114,7 +114,7 @@ func Proxy(ctx context.Context, cfg ProxyConfig) (opcm.DeployProxyOutput, error)
 	}
 
 	lgr := cfg.Logger
-	artifactsFS, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor(), cfg.CacheDir)
+	artifactsFS, err := artifacts.Download(ctx, cfg.ArtifactsLocator, ioutil.BarProgressor(), cfg.CacheDir)
 	if err != nil {
 		return dpo, fmt.Errorf("failed to download artifacts: %w", err)
 	}

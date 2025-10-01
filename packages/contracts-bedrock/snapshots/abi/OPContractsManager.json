@@ -17,6 +17,16 @@
         "type": "address"
       },
       {
+        "internalType": "contract OPContractsManagerInteropMigrator",
+        "name": "_opcmInteropMigrator",
+        "type": "address"
+      },
+      {
+        "internalType": "contract OPContractsManagerStandardValidator",
+        "name": "_opcmStandardValidator",
+        "type": "address"
+      },
+      {
         "internalType": "contract ISuperchainConfig",
         "name": "_superchainConfig",
         "type": "address"
@@ -30,11 +40,6 @@
         "internalType": "contract IProxyAdmin",
         "name": "_superchainProxyAdmin",
         "type": "address"
-      },
-      {
-        "internalType": "string",
-        "name": "_l1ContractsRelease",
-        "type": "string"
       },
       {
         "internalType": "address",
@@ -192,6 +197,26 @@
           {
             "internalType": "address",
             "name": "permissionlessDisputeGame2",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "superPermissionedDisputeGame1",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "superPermissionedDisputeGame2",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "superPermissionlessDisputeGame1",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "superPermissionlessDisputeGame2",
             "type": "address"
           }
         ],
@@ -369,6 +394,11 @@
             "type": "address"
           },
           {
+            "internalType": "contract IETHLockbox",
+            "name": "ethLockboxProxy",
+            "type": "address"
+          },
+          {
             "internalType": "contract IOptimismPortal2",
             "name": "optimismPortalProxy",
             "type": "address"
@@ -414,6 +444,19 @@
   },
   {
     "inputs": [],
+    "name": "devFeatureBitmap",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "implementations",
     "outputs": [
       {
@@ -436,6 +479,16 @@
           {
             "internalType": "address",
             "name": "optimismPortalImpl",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "optimismPortalInteropImpl",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "ethLockboxImpl",
             "type": "address"
           },
           {
@@ -488,8 +541,14 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "isRC",
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_feature",
+        "type": "bytes32"
+      }
+    ],
+    "name": "isDevFeatureEnabled",
     "outputs": [
       {
         "internalType": "bool",
@@ -501,16 +560,104 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "l1ContractsRelease",
-    "outputs": [
+    "inputs": [
       {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
+        "components": [
+          {
+            "internalType": "bool",
+            "name": "usePermissionlessGame",
+            "type": "bool"
+          },
+          {
+            "components": [
+              {
+                "internalType": "Hash",
+                "name": "root",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256",
+                "name": "l2SequenceNumber",
+                "type": "uint256"
+              }
+            ],
+            "internalType": "struct Proposal",
+            "name": "startingAnchorRoot",
+            "type": "tuple"
+          },
+          {
+            "components": [
+              {
+                "internalType": "address",
+                "name": "proposer",
+                "type": "address"
+              },
+              {
+                "internalType": "address",
+                "name": "challenger",
+                "type": "address"
+              },
+              {
+                "internalType": "uint256",
+                "name": "maxGameDepth",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "splitDepth",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "initBond",
+                "type": "uint256"
+              },
+              {
+                "internalType": "Duration",
+                "name": "clockExtension",
+                "type": "uint64"
+              },
+              {
+                "internalType": "Duration",
+                "name": "maxClockDuration",
+                "type": "uint64"
+              }
+            ],
+            "internalType": "struct OPContractsManagerInteropMigrator.GameParameters",
+            "name": "gameParameters",
+            "type": "tuple"
+          },
+          {
+            "components": [
+              {
+                "internalType": "contract ISystemConfig",
+                "name": "systemConfigProxy",
+                "type": "address"
+              },
+              {
+                "internalType": "contract IProxyAdmin",
+                "name": "proxyAdmin",
+                "type": "address"
+              },
+              {
+                "internalType": "Claim",
+                "name": "absolutePrestate",
+                "type": "bytes32"
+              }
+            ],
+            "internalType": "struct OPContractsManager.OpChainConfig[]",
+            "name": "opChainConfigs",
+            "type": "tuple[]"
+          }
+        ],
+        "internalType": "struct OPContractsManagerInteropMigrator.MigrateInput",
+        "name": "_input",
+        "type": "tuple"
       }
     ],
-    "stateMutability": "view",
+    "name": "migrate",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -532,6 +679,32 @@
     "outputs": [
       {
         "internalType": "contract OPContractsManagerGameTypeAdder",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "opcmInteropMigrator",
+    "outputs": [
+      {
+        "internalType": "contract OPContractsManagerInteropMigrator",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "opcmStandardValidator",
+    "outputs": [
+      {
+        "internalType": "contract OPContractsManagerStandardValidator",
         "name": "",
         "type": "address"
       }
@@ -563,19 +736,6 @@
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "bool",
-        "name": "_isRC",
-        "type": "bool"
-      }
-    ],
-    "name": "setRC",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -678,6 +838,133 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "contract ISuperchainConfig",
+        "name": "_superchainConfig",
+        "type": "address"
+      },
+      {
+        "internalType": "contract IProxyAdmin",
+        "name": "_superchainProxyAdmin",
+        "type": "address"
+      }
+    ],
+    "name": "upgradeSuperchainConfig",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "contract IProxyAdmin",
+            "name": "proxyAdmin",
+            "type": "address"
+          },
+          {
+            "internalType": "contract ISystemConfig",
+            "name": "sysCfg",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "absolutePrestate",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "uint256",
+            "name": "l2ChainID",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct OPContractsManagerStandardValidator.ValidationInput",
+        "name": "_input",
+        "type": "tuple"
+      },
+      {
+        "internalType": "bool",
+        "name": "_allowFailure",
+        "type": "bool"
+      }
+    ],
+    "name": "validate",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "contract IProxyAdmin",
+            "name": "proxyAdmin",
+            "type": "address"
+          },
+          {
+            "internalType": "contract ISystemConfig",
+            "name": "sysCfg",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "absolutePrestate",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "uint256",
+            "name": "l2ChainID",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct OPContractsManagerStandardValidator.ValidationInput",
+        "name": "_input",
+        "type": "tuple"
+      },
+      {
+        "internalType": "bool",
+        "name": "_allowFailure",
+        "type": "bool"
+      },
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "l1PAOMultisig",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "challenger",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct OPContractsManagerStandardValidator.ValidationOverrides",
+        "name": "_overrides",
+        "type": "tuple"
+      }
+    ],
+    "name": "validateWithOverrides",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "version",
     "outputs": [
@@ -751,11 +1038,6 @@
   {
     "inputs": [],
     "name": "OnlyDelegatecall",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "OnlyUpgradeController",
     "type": "error"
   },
   {

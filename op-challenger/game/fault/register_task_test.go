@@ -40,14 +40,20 @@ func TestRegisterOracle_MissingGameImpl(t *testing.T) {
 }
 
 func TestRegisterOracle_AddsOracle(t *testing.T) {
-	for _, gameType := range []faultTypes.GameType{faultTypes.CannonGameType, faultTypes.SuperCannonGameType} {
+	for _, gameType := range []faultTypes.GameType{faultTypes.CannonGameType, faultTypes.SuperCannonGameType, faultTypes.SuperAsteriscKonaGameType} {
 		t.Run(fmt.Sprintf("%v", gameType), func(t *testing.T) {
 			gameFactoryAddr := common.Address{0xaa}
 			gameImplAddr := common.Address{0xbb}
 			vmAddr := common.Address{0xcc}
 			oracleAddr := common.Address{0xdd}
 			rpc := test.NewAbiBasedRpc(t, gameFactoryAddr, snapshots.LoadDisputeGameFactoryABI())
-			rpc.AddContract(gameImplAddr, snapshots.LoadFaultDisputeGameABI())
+			if gameType == faultTypes.CannonGameType {
+				rpc.AddContract(gameImplAddr, snapshots.LoadFaultDisputeGameABI())
+			} else if gameType == faultTypes.SuperCannonGameType || gameType == faultTypes.SuperAsteriscKonaGameType {
+				rpc.AddContract(gameImplAddr, snapshots.LoadSuperFaultDisputeGameABI())
+			} else {
+				t.Fatalf("game type %v not supported", gameType)
+			}
 			rpc.AddContract(vmAddr, snapshots.LoadMIPSABI())
 			rpc.AddContract(oracleAddr, snapshots.LoadPreimageOracleABI())
 			m := metrics.NoopMetrics

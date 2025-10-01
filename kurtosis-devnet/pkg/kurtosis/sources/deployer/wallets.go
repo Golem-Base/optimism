@@ -2,13 +2,16 @@ package deployer
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 
 	ktfs "github.com/ethereum-optimism/optimism/devnet-sdk/kt/fs"
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,17 +39,17 @@ func getMnemonics(r io.Reader) (string, error) {
 func (d *Deployer) getL1ValidatorWallets(deployerArtifact *ktfs.Artifact) ([]*Wallet, error) {
 	mnemonicsBuffer := bytes.NewBuffer(nil)
 	if err := deployerArtifact.ExtractFiles(
-		ktfs.NewArtifactFileWriter(d.mnemonicsName, mnemonicsBuffer),
+		ktfs.NewArtifactFileWriter(d.l1ValidatorMnemonicName, mnemonicsBuffer),
 	); err != nil {
 		return nil, err
 	}
 
-	mnemonics, err := getMnemonics(mnemonicsBuffer)
+	mnemonic, err := getMnemonics(mnemonicsBuffer)
 	if err != nil {
 		return nil, err
 	}
 
-	m, _ := devkeys.NewMnemonicDevKeys(mnemonics)
+	m, _ := devkeys.NewMnemonicDevKeys(mnemonic)
 	knownWallets := make([]*Wallet, 0)
 
 	var keys []devkeys.Key
@@ -66,4 +69,21 @@ func (d *Deployer) getL1ValidatorWallets(deployerArtifact *ktfs.Artifact) ([]*Wa
 	}
 
 	return knownWallets, nil
+}
+
+func (d *Deployer) getConfig(genesisArtifact *ktfs.Artifact) (*params.ChainConfig, error) {
+	genesisBuffer := bytes.NewBuffer(nil)
+	if err := genesisArtifact.ExtractFiles(
+		ktfs.NewArtifactFileWriter(d.l1GenesisName, genesisBuffer),
+	); err != nil {
+		return nil, err
+	}
+
+	// Parse the genesis file JSON into a core.Genesis struct
+	var genesis core.Genesis
+	if err := json.NewDecoder(genesisBuffer).Decode(&genesis); err != nil {
+		return nil, fmt.Errorf("failed to parse genesis file %s in artifact %s: %w", d.l1GenesisName, d.genesisArtifactName, err)
+	}
+
+	return genesis.Config, nil
 }
